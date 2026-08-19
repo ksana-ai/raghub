@@ -153,8 +153,13 @@ func (r *Runner) Run(ctx context.Context, loaded LoadedDataset, options Options)
 	if options.TopK <= 0 {
 		return finishIncomplete(manifest, clock, errors.New("eval top_k must be positive"))
 	}
-	if options.SearchMode != model.SearchModeFTS && options.SearchMode != model.SearchModeDense {
-		return finishIncomplete(manifest, clock, fmt.Errorf("eval search mode must be %q or %q", model.SearchModeFTS, model.SearchModeDense))
+	if options.SearchMode != model.SearchModeFTS && options.SearchMode != model.SearchModeDense && options.SearchMode != model.SearchModeHybrid {
+		return finishIncomplete(manifest, clock, fmt.Errorf(
+			"eval search mode must be %q, %q, or %q",
+			model.SearchModeFTS,
+			model.SearchModeDense,
+			model.SearchModeHybrid,
+		))
 	}
 	if strings.TrimSpace(options.RetrieverName) == "" {
 		return finishIncomplete(manifest, clock, errors.New("eval retriever name is required"))

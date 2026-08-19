@@ -24,7 +24,37 @@ func (testIngestor) Ingest(_ context.Context, document model.DocumentInput) (mod
 type testSearcher struct{}
 
 func (testSearcher) Search(_ context.Context, request model.SearchRequest) (model.SearchResult, error) {
-	return model.SearchResult{Hits: []model.SearchHit{{ChunkID: "doc:v000001:c0000"}}}, nil
+	hit := model.SearchHit{ChunkID: "doc:v000001:c0000", Score: 1}
+	switch request.Mode {
+	case model.SearchModeDense:
+		hit.StageScores = []model.StageScore{{Stage: "dense", Rank: 1, Score: 1}}
+		return model.SearchResult{
+			Hits: []model.SearchHit{hit},
+			Traces: []model.StageTrace{
+				{Stage: "query_embedding"},
+				{Stage: "dense"},
+			},
+		}, nil
+	case model.SearchModeHybrid:
+		hit.Score = 2.0 / 61
+		hit.StageScores = []model.StageScore{
+			{Stage: "fts", Rank: 1, Score: 1},
+			{Stage: "dense", Rank: 1, Score: 1},
+			{Stage: "rrf", Rank: 1, Score: hit.Score},
+		}
+		return model.SearchResult{
+			Hits: []model.SearchHit{hit},
+			Traces: []model.StageTrace{
+				{Stage: "fts"},
+				{Stage: "query_embedding"},
+				{Stage: "dense"},
+				{Stage: "rrf_fusion"},
+			},
+		}, nil
+	default:
+		hit.StageScores = []model.StageScore{{Stage: "fts", Rank: 1, Score: 1}}
+		return model.SearchResult{Hits: []model.SearchHit{hit}, Traces: []model.StageTrace{{Stage: "fts"}}}, nil
+	}
 }
 
 type testInspector struct{}
@@ -67,6 +97,66 @@ func TestRunWritesStrictSmokeComparison(t *testing.T) {
 	}
 	if comparison.Baseline.Retriever.Name != "fts" || comparison.Candidate.Retriever.Name != "dense" {
 		t.Fatalf("missing paired retriever provenance: %+v", comparison)
+	}
+}
+
+func TestRunWritesStrictThreeWaySmokeComparison(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	ftsPath := filepath.Join(directory, "fts.json")
+	densePath := filepath.Join(directory, "dense.json")
+	hybridPath := filepath.Join(directory, "hybrid.json")
+	outputPath := filepath.Join(directory, "comparison.json")
+	writeTestManifest(t, ftsPath, testManifest(t, "postgres_fts", model.SearchModeFTS, 5))
+	writeTestManifest(t, densePath, testManifest(t, "postgres_dense", model.SearchModeDense, 5))
+	writeTestManifest(t, hybridPath, testManifest(t, "postgres_hybrid_rrf", model.SearchModeHybrid, 5))
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"-fts", ftsPath,
+		"-dense", densePath,
+		"-hybrid", hybridPath,
+		"-output", outputPath,
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run() = %d, stderr=%q", code, stderr.String())
+	}
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var comparison evalrun.ThreeWayComparison
+	if err := json.Unmarshal(data, &comparison); err != nil {
+		t.Fatalf("decode three-way comparison: %v", err)
+	}
+	if comparison.SchemaVersion != evalrun.ThreeWayComparisonSchemaVersion || comparison.Status != evalrun.SmokeStatus {
+		t.Fatalf("comparison escaped smoke scope: %+v", comparison)
+	}
+	if comparison.FTS.Retriever.Name != "postgres_fts" || comparison.Dense.Retriever.Name != "postgres_dense" || comparison.Hybrid.Retriever.Name != "postgres_hybrid_rrf" {
+		t.Fatalf("missing three-way retriever provenance: %+v", comparison)
+	}
+}
+
+func TestRunRejectsMixedOrIncompleteComparisonModes(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "mixed", args: []string{"-baseline", "fts.json", "-candidate", "dense.json", "-hybrid", "hybrid.json"}, want: "cannot be combined"},
+		{name: "incomplete three-way", args: []string{"-fts", "fts.json", "-dense", "dense.json"}, want: "are all required"},
+		{name: "no mode", args: nil, want: "provide either"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			var stdout, stderr bytes.Buffer
+			if code := run(test.args, &stdout, &stderr); code != 2 || !bytes.Contains(stderr.Bytes(), []byte(test.want)) {
+				t.Fatalf("run() = %d, stderr=%q", code, stderr.String())
+			}
+		})
 	}
 }
 
@@ -121,6 +211,16 @@ func TestWriteOutputReplacesComparisonAtomically(t *testing.T) {
 
 func testManifest(t *testing.T, retrieverName string, mode model.SearchMode, topK int) evalrun.Manifest {
 	t.Helper()
+	retrieverConfig := map[string]any{"mode": string(mode)}
+	if mode == model.SearchModeHybrid {
+		retrieverConfig["fusion"] = "reciprocal_rank_fusion"
+		retrieverConfig["branch_failure"] = "fail_closed"
+		retrieverConfig["rrf_k"] = 60
+		retrieverConfig["fts_candidate_k"] = 20
+		retrieverConfig["dense_candidate_k"] = 20
+		retrieverConfig["fts"] = map[string]any{"mode": "fts"}
+		retrieverConfig["dense"] = map[string]any{"mode": "dense"}
+	}
 	dataset := evalrun.Dataset{
 		SchemaVersion: evalrun.DatasetSchemaVersion,
 		Name:          "paired",
@@ -137,7 +237,7 @@ func testManifest(t *testing.T, retrieverName string, mode model.SearchMode, top
 		Dataset: dataset, SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	}, evalrun.Options{
 		TopK: topK, SearchMode: mode, RetrieverName: retrieverName,
-		RetrieverConfig: map[string]any{"mode": string(mode)}, Command: "raghub-eval",
+		RetrieverConfig: retrieverConfig, Command: "raghub-eval",
 		DatabaseVersion: "test-db", VectorExtensionVersion: "0.8.1", CodeRevision: "test-revision",
 	})
 	if err != nil {

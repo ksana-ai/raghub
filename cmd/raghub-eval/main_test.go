@@ -11,13 +11,13 @@ import (
 func TestParseSearchMode(t *testing.T) {
 	t.Parallel()
 
-	for _, value := range []string{"fts", "dense"} {
+	for _, value := range []string{"fts", "dense", "hybrid"} {
 		if mode, err := parseSearchMode(value); err != nil || string(mode) != value {
 			t.Fatalf("parseSearchMode(%q) = %q, %v", value, mode, err)
 		}
 	}
-	if _, err := parseSearchMode("hybrid"); err == nil {
-		t.Fatal("parseSearchMode(hybrid) error = nil")
+	if _, err := parseSearchMode("rerank"); err == nil {
+		t.Fatal("parseSearchMode(rerank) error = nil")
 	}
 }
 
@@ -25,7 +25,7 @@ func TestRunRejectsUnknownModeBeforeExternalDependencies(t *testing.T) {
 	t.Parallel()
 
 	var stdout, stderr bytes.Buffer
-	code := run(context.Background(), []string{"-mode", "hybrid"}, func(string) string { return "" }, &stdout, &stderr, "raghub-eval -mode hybrid")
+	code := run(context.Background(), []string{"-mode", "rerank"}, func(string) string { return "" }, &stdout, &stderr, "raghub-eval -mode rerank")
 	if code != 2 || !bytes.Contains(stderr.Bytes(), []byte("-mode must be")) {
 		t.Fatalf("run() = %d, stderr=%q", code, stderr.String())
 	}
@@ -34,15 +34,20 @@ func TestRunRejectsUnknownModeBeforeExternalDependencies(t *testing.T) {
 func TestRunValidatesDenseEnvironmentBeforeDatabase(t *testing.T) {
 	t.Parallel()
 
-	var stdout, stderr bytes.Buffer
-	code := run(context.Background(), []string{"-mode", "dense"}, func(key string) string {
-		if key == "RAGHUB_EMBEDDING_DIMENSIONS" {
-			return "768"
-		}
-		return ""
-	}, &stdout, &stderr, "raghub-eval -mode dense")
-	if code != 2 || !bytes.Contains(stderr.Bytes(), []byte("must be 1024")) {
-		t.Fatalf("run() = %d, stderr=%q", code, stderr.String())
+	for _, mode := range []string{"dense", "hybrid"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			var stdout, stderr bytes.Buffer
+			code := run(context.Background(), []string{"-mode", mode}, func(key string) string {
+				if key == "RAGHUB_EMBEDDING_DIMENSIONS" {
+					return "768"
+				}
+				return ""
+			}, &stdout, &stderr, "raghub-eval -mode "+mode)
+			if code != 2 || !bytes.Contains(stderr.Bytes(), []byte("must be 1024")) {
+				t.Fatalf("run() = %d, stderr=%q", code, stderr.String())
+			}
+		})
 	}
 }
 
@@ -61,11 +66,11 @@ func TestRunFTSDoesNotRequireEmbeddingConfiguration(t *testing.T) {
 	}
 }
 
-func TestDefaultDatasetIsPairedV2(t *testing.T) {
+func TestDefaultDatasetIsPreregisteredHybridV3(t *testing.T) {
 	t.Parallel()
 
-	if defaultDataset != "datasets/smoke/v2.json" {
-		t.Fatalf("defaultDataset = %q, want paired v2", defaultDataset)
+	if defaultDataset != "datasets/smoke/v3.json" {
+		t.Fatalf("defaultDataset = %q, want hybrid v3", defaultDataset)
 	}
 }
 

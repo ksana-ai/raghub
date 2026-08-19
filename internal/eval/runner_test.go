@@ -300,7 +300,7 @@ func TestRunnerRejectsUnknownSearchModeBeforeIngestion(t *testing.T) {
 
 	ingestor := &fakeIngestor{}
 	manifest, err := NewRunner(ingestor, &fakeSearcher{}, &fakeCorpusInspector{}).Run(context.Background(), LoadedDataset{}, Options{
-		TopK: 1, SearchMode: model.SearchMode("hybrid"), RetrieverName: "fake", Command: "raghub-eval",
+		TopK: 1, SearchMode: model.SearchMode("rerank"), RetrieverName: "fake", Command: "raghub-eval",
 	})
 	if err == nil || !strings.Contains(err.Error(), "search mode") {
 		t.Fatalf("Run() error = %v, want search mode validation error", err)

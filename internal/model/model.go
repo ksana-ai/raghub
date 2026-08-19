@@ -86,12 +86,13 @@ type SearchRequest struct {
 }
 
 // SearchMode selects one independently measurable retrieval path. Hybrid
-// fusion is deliberately a later stage so FTS and dense remain valid baselines.
+// preserves the independent FTS and dense evidence before adding fusion.
 type SearchMode string
 
 const (
-	SearchModeFTS   SearchMode = "fts"
-	SearchModeDense SearchMode = "dense"
+	SearchModeFTS    SearchMode = "fts"
+	SearchModeDense  SearchMode = "dense"
+	SearchModeHybrid SearchMode = "hybrid"
 )
 
 // SearchHit is a ranked chunk plus the information required to cite the exact

@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	defaultDataset      = "datasets/smoke/v2.json"
+	defaultDataset      = "datasets/smoke/v3.json"
 	defaultChunkRunes   = 1200
 	defaultOverlapRunes = 120
 )
@@ -38,7 +38,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	datasetPath := flags.String("dataset", defaultDataset, "path to a versioned JSON evaluation dataset")
 	outputPath := flags.String("output", "-", "manifest output path, or - for stdout")
 	topK := flags.Int("top-k", 5, "number of ranked chunks to evaluate")
-	modeFlag := flags.String("mode", string(model.SearchModeFTS), "retrieval mode: fts or dense")
+	modeFlag := flags.String("mode", string(model.SearchModeFTS), "retrieval mode: fts, dense, or hybrid")
 	migrate := flags.Bool("migrate", false, "apply database migrations before evaluation")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -60,7 +60,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		denseConfig denseSettings
 		denseClient *embeddingopenai.Client
 	)
-	if searchMode == model.SearchModeDense {
+	if searchMode == model.SearchModeDense || searchMode == model.SearchModeHybrid {
 		denseConfig, err = loadDenseSettings(getenv)
 		if err != nil {
 			fmt.Fprintf(stderr, "raghub-eval: %v\n", err)
@@ -113,23 +113,27 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		retrieverName   string
 		retrieverConfig map[string]any
 	)
-	if searchMode == model.SearchModeDense {
+	switch searchMode {
+	case model.SearchModeDense:
 		ingestor = ingest.NewServiceWithEmbedder(store, chunker, denseClient)
 		searcher = retrieval.NewServiceWithDense(store, store, denseClient)
 		retrieverName = "postgres_dense"
-		retrieverConfig = denseConfig.manifestConfig()
-	} else {
+		retrieverConfig = denseManifestConfig(denseConfig)
+	case model.SearchModeHybrid:
+		hybridConfig := retrieval.DefaultHybridConfig()
+		ingestor = ingest.NewServiceWithEmbedder(store, chunker, denseClient)
+		searcher, err = retrieval.NewServiceWithHybrid(store, store, denseClient, hybridConfig)
+		if err != nil {
+			fmt.Fprintf(stderr, "raghub-eval: configure hybrid retriever: %v\n", err)
+			return 2
+		}
+		retrieverName = "postgres_hybrid_rrf"
+		retrieverConfig = hybridManifestConfig(denseConfig, hybridConfig)
+	case model.SearchModeFTS:
 		ingestor = ingest.NewService(store, chunker)
 		searcher = retrieval.NewService(store)
 		retrieverName = "postgres_fts"
-		retrieverConfig = map[string]any{
-			"backend":             "postgresql",
-			"fts_config":          "simple",
-			"query_parser":        "plainto_tsquery",
-			"chunker":             "markdown",
-			"chunk_max_runes":     defaultChunkRunes,
-			"chunk_overlap_runes": defaultOverlapRunes,
-		}
+		retrieverConfig = ftsManifestConfig()
 	}
 
 	databaseVersion := ""
@@ -174,8 +178,13 @@ SELECT COALESCE(
 
 func parseSearchMode(value string) (model.SearchMode, error) {
 	mode := model.SearchMode(strings.TrimSpace(value))
-	if mode != model.SearchModeFTS && mode != model.SearchModeDense {
-		return "", fmt.Errorf("-mode must be %q or %q", model.SearchModeFTS, model.SearchModeDense)
+	if mode != model.SearchModeFTS && mode != model.SearchModeDense && mode != model.SearchModeHybrid {
+		return "", fmt.Errorf(
+			"-mode must be %q, %q, or %q",
+			model.SearchModeFTS,
+			model.SearchModeDense,
+			model.SearchModeHybrid,
+		)
 	}
 	return mode, nil
 }

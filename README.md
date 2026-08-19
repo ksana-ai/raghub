@@ -1,10 +1,10 @@
 # RAGHub
 
 RAGHub is a Go-native retrieval platform built as an evidence-backed project,
-not a chat-demo wrapper. The current repository implements two independently
+not a chat-demo wrapper. The current repository implements three independently
 measurable retrieval baselines:
 
-`Markdown ingestion -> versioned PostgreSQL + pgvector storage -> FTS or exact Dense retrieval -> tenant/ACL filtering -> citations -> paired offline evaluation`
+`Markdown ingestion -> versioned PostgreSQL + pgvector storage -> FTS, exact Dense, or fail-closed Hybrid RRF -> tenant/ACL filtering -> citations -> three-way offline evaluation`
 
 ## Current status
 
@@ -22,25 +22,30 @@ Implemented in this slice:
   vector backfill for an existing FTS-ingested version;
 - exact pgvector cosine search over a materialized authorized/current-version
   set;
-- explicit `fts` and `dense` modes with query-embedding and database traces;
+- explicit `fts`, `dense`, and `hybrid` modes with query-embedding, database,
+  and fusion traces;
+- fail-closed reciprocal rank fusion over independently authorized FTS and
+  Dense candidate sets, preregistered with candidate floors 20/20 and
+  `rrf_k=60`;
 - current-version, tenant, and principal ACL filters in the SQL query;
 - exact document-version/chunk/source references in every hit;
 - per-stage score/rank and latency traces;
-- versioned lexical and paired semantic/multilingual smoke datasets;
-- strict JSON evaluation and paired-comparison manifests;
+- versioned lexical, paired, and preregistered hybrid smoke datasets;
+- strict JSON evaluation plus backward-compatible pairwise and strict
+  FTS/Dense/Hybrid comparison manifests;
 - HitRate@K, standard Recall@K, MRR, binary nDCG@K, p50, and p95;
 - unit and opt-in PostgreSQL integration tests.
 
 Not implemented yet:
 
 - approximate nearest-neighbor indexes or production-scale performance proof;
-- hybrid RRF or reranking;
+- reranking;
 - answer generation, citation verification, or an LLM judge;
 - Contextual Retrieval, Agentic RAG, RAPTOR, or GraphRAG;
 - production authentication, deployment, or production performance evidence.
 
-The distinction matters: the current result is an FTS baseline plus an exact
-Dense smoke baseline, not a completed hybrid or production RAG system.
+The distinction matters: the current result is an FTS, exact Dense, and Hybrid
+RRF smoke baseline, not a production RAG system.
 
 ## Quick start
 
@@ -49,7 +54,7 @@ Requirements:
 - Go 1.24;
 - Docker with Compose.
 - LM Studio serving `text-embedding-bge-m3` through the OpenAI-compatible
-  `/v1/embeddings` API for ingestion and Dense search.
+  `/v1/embeddings` API for ingestion, Dense search, and Hybrid search.
 
 Start PostgreSQL:
 
@@ -104,6 +109,21 @@ curl --fail-with-body \
   http://localhost:8080/v1/search
 ```
 
+Run the fixed Hybrid RRF baseline with `mode=hybrid`:
+
+```bash
+curl --fail-with-body \
+  -H 'Content-Type: application/json' \
+  -H 'X-Tenant-ID: demo' \
+  -d '{"query":"How can releases avoid an outage?","top_k":5,"mode":"hybrid"}' \
+  http://localhost:8080/v1/search
+```
+
+Hybrid requests `max(top_k, 20)` authorized candidates from each branch,
+applies RRF with `k=60`, and returns FTS, Dense, and RRF ranks/scores. If either
+retrieval branch fails, the whole Hybrid request fails rather than silently
+changing the retrieval protocol.
+
 `X-Tenant-ID` and `X-Principal-ID` are development authorization context.
 They are deliberately outside the JSON payload, but they are still spoofable
 headers until a trusted authentication layer derives them from credentials.
@@ -112,43 +132,55 @@ process liveness alone is available at `/healthz`.
 
 ## Evaluation
 
-Run either retriever over the same exact-byte v2 dataset while developing:
+The preregistered v3 smoke dataset contains 20 fixed queries spanning exact
+identifiers, semantic paraphrases, Chinese-English retrieval, near-duplicate
+distractors, ACL filtering, and tenant isolation. Run each retriever over its
+exact bytes while developing:
 
 ```bash
 mkdir -p artifacts/evals
 go run ./cmd/raghub-eval \
   -migrate \
   -mode fts \
-  -dataset datasets/smoke/v2.json \
-  -output artifacts/evals/v2-fts.json
+  -dataset datasets/smoke/v3.json \
+  -output artifacts/evals/v3-fts.json
 
 go run ./cmd/raghub-eval \
   -mode dense \
-  -dataset datasets/smoke/v2.json \
-  -output artifacts/evals/v2-dense.json
+  -dataset datasets/smoke/v3.json \
+  -output artifacts/evals/v3-dense.json
 
+go run ./cmd/raghub-eval \
+  -mode hybrid \
+  -dataset datasets/smoke/v3.json \
+  -output artifacts/evals/v3-hybrid.json
 ```
 
 The individual runs are useful as pre-commit acceptance checks. A trusted
-paired comparison additionally requires both manifests to identify the same
-clean commit. After committing an accepted stage, generate and compare both
-runs with the fail-fast target:
+three-way comparison additionally requires all manifests to identify the same
+clean commit. After committing an accepted stage, generate and compare all
+three runs with the fail-fast target:
 
 ```bash
-make eval-paired
+make eval-three-way
 ```
 
-The target checks for a clean committed revision before making either model
-run. It builds the evaluator binary so Go embeds the checked VCS revision, then
-writes the FTS, Dense, and comparison artifacts under `artifacts/evals/` by
-default.
+The target checks for a clean committed revision before any retrieval run. It
+builds the evaluator binary so Go embeds the checked VCS revision, then writes
+the FTS, Dense, Hybrid, and three-way comparison artifacts under
+`artifacts/evals/` by default. `make eval-v2-regression` runs the same three-way
+protocol over the retained v2 corpus; `make eval-all` runs both v3 and v2.
+`make eval-paired` remains an alias for the current three-way protocol.
 
 Each manifest records the dataset hash, retriever/config identity, runtime
 information, aggregate metrics, and per-query ranks/scores. The comparison tool
-refuses to pair reports unless corpus, dataset hash, TopK, query identities,
-gold/forbidden references, smoke status, and safety gates agree. These reports
-remain `smoke`: they prove that one fixed local path ran, but are too small to
-support a general retrieval-quality claim.
+refuses a three-way report unless retriever identities, corpus, dataset hash,
+TopK, query identities, gold/forbidden references, runtime, clean revision,
+smoke status, and safety gates agree. These reports remain `smoke`: they prove
+that one fixed local path ran, but are too small to support a general
+retrieval-quality claim. Query text and gold references in v3 must not be
+changed in response to observed rankings; changes require a new dataset
+version.
 
 LM Studio reports the configured model name but not a verifiable weight
 revision. `profile_id` is therefore an explicit operator-managed vector-space
@@ -176,7 +208,7 @@ Or use the make targets:
 make db-up
 make verify
 make test-integration
-make eval-paired
+make eval-all
 ```
 
 Integration tests skip when `RAGHUB_TEST_DATABASE_URL` is absent; a skipped test
@@ -187,6 +219,7 @@ is not PostgreSQL runtime evidence.
 - [OpenAPI contract](api/openapi.yaml)
 - [ADR 0001: measurable PostgreSQL FTS slice](docs/adr/0001-first-retrieval-slice.md)
 - [ADR 0002: exact pgvector Dense baseline](docs/adr/0002-exact-pgvector-dense-baseline.md)
+- [ADR 0003: fail-closed Hybrid RRF baseline](docs/adr/0003-hybrid-rrf-baseline.md)
 - [Database migrations](migrations/)
 
 The local module path is currently `raghub`. It should be changed to the final
@@ -194,10 +227,11 @@ public repository path once that namespace is chosen.
 
 ## Next slices
 
-1. Add RRF with preserved sparse, dense, and fusion scores.
-2. Add reranking only after hybrid failure cases justify it.
-3. Expand to 50-100 preregistered gold queries, including semantic rewrites,
+1. Analyze preregistered Hybrid bad cases without changing v3 gold after the
+   first run.
+2. Expand to 50-100 preregistered gold queries, including semantic rewrites,
    version transitions, ACL negatives, and cross-tenant leakage gates.
+3. Add reranking only if Hybrid failure cases justify the added stage.
 4. Evaluate tenant-aware ANN only when corpus scale justifies it, comparing its
    recall against the exact Dense baseline.
 5. Add OpenTelemetry spans, load tests, CI, and a verified identity boundary.

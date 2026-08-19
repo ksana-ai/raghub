@@ -1,0 +1,360 @@
+{
+  "schema_version": "raghub.eval.dataset/v1",
+  "name": "raghub-smoke-hybrid",
+  "version": "3.0.0",
+  "description": "Preregistered exact-byte smoke corpus for three-way FTS, Dense, and Hybrid RRF comparison. Twenty fixed queries cover exact identifiers, semantic paraphrases, Chinese-English retrieval, near-duplicate distractors, ACL filtering, and tenant isolation. It is local smoke evidence, not a production benchmark.",
+  "documents": [
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-webhook-error",
+      "title": "Webhook Failure Catalog",
+      "source_uri": "fixture://v3/acme/webhook-error",
+      "content": "# Webhook failure QLZ-739\n\nError QLZ-739 means the callback dispatcher rejected a signed request because its timestamp was more than 300 seconds behind server time. Synchronize the sender clock before retrying the callback.",
+      "metadata": {"category": "runbook", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-torque-adapter",
+      "title": "Torque Adapter Inventory",
+      "source_uri": "fixture://v3/acme/torque-adapter",
+      "content": "# Inventory item SKU-K4X-991\n\nSKU-K4X-991 is the graphite left-handed torque adapter. Replacement units are stored in aisle seven, bin C-14.",
+      "metadata": {"category": "inventory", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-replay-config",
+      "title": "Replay Timing Configuration",
+      "source_uri": "fixture://v3/acme/replay-config",
+      "content": "# Replay gap setting\n\nThe configuration key max_replay_gap_ms limits the permitted gap between replayed event timestamps. The Acme production value is 45000 milliseconds.",
+      "metadata": {"category": "configuration", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-trace-header",
+      "title": "Retrieval Trace Header",
+      "source_uri": "fixture://v3/acme/trace-header",
+      "content": "# Retrieval diagnostics\n\nSend the HTTP request header X-RagHub-Trace with value stages to include retrieval-stage diagnostics in the response. Do not enable it for ordinary client traffic.",
+      "metadata": {"category": "api", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-membership",
+      "title": "Membership Renewal Policy",
+      "source_uri": "fixture://v3/acme/membership",
+      "content": "# Ending automatic renewal\n\nDisable automatic renewal in billing settings to prevent the next charge. Membership benefits remain active until the final day of the already-paid period.",
+      "metadata": {"category": "billing", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-backups",
+      "title": "Database Backup Window",
+      "source_uri": "fixture://v3/acme/backups",
+      "content": "# Point-in-time recovery\n\nDatabase backups are retained for forty-five days. Operations can recover records deleted within that retention window, but older recovery points are unavailable.",
+      "metadata": {"category": "recovery", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-blue-green",
+      "title": "Blue-Green Release Procedure",
+      "source_uri": "fixture://v3/acme/blue-green",
+      "content": "# Switching production without downtime\n\nDeploy the release to the idle green environment, complete health checks, and then move the production router from blue to green. Keep blue available for immediate rollback.",
+      "metadata": {"category": "deployment", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-invoice-address",
+      "title": "Invoice Legal Address Changes",
+      "source_uri": "fixture://v3/acme/invoice-address",
+      "content": "# Correcting company details\n\nUpdate the legal company address in the billing profile before the invoice is issued. After issuance, request a credit note and replacement invoice from finance support.",
+      "metadata": {"category": "billing", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-umbrellas",
+      "title": "Visitor Umbrella Service",
+      "source_uri": "fixture://v3/acme/umbrellas",
+      "content": "# Rain supplies for visitors\n\nVisitors may borrow a blue umbrella from the ground-floor reception desk. Return it at the west entrance before the building closes.",
+      "metadata": {"category": "facilities", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-travel-receipts",
+      "title": "差旅票据提交时限",
+      "source_uri": "fixture://v3/acme/travel-receipts",
+      "content": "# 酒店票据报销\n\n员工应在出差返程后的十个自然日内提交酒店住宿票据。超过期限时，需要直属经理书面批准后才能补交。",
+      "metadata": {"category": "travel", "language": "zh-CN"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-parental-leave",
+      "title": "Parental Leave Notice",
+      "source_uri": "fixture://v3/acme/parental-leave",
+      "content": "# Planning parental leave\n\nA parent should notify People Operations at least thirty calendar days before the expected leave start date. An unexpected early birth can be reported as soon as practical.",
+      "metadata": {"category": "people", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-atlas-production",
+      "title": "Atlas Production Rotation",
+      "source_uri": "fixture://v3/acme/atlas-production",
+      "content": "# Project Atlas production on-call\n\nThe production rotation sends incident webhooks to https://ops.acme.test/hooks/atlas-prod. Escalations go to the primary platform engineer.",
+      "metadata": {"category": "on-call", "environment": "production"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-atlas-staging",
+      "title": "Atlas Staging Rotation",
+      "source_uri": "fixture://v3/acme/atlas-staging",
+      "content": "# Project Atlas staging on-call\n\nThe staging rotation sends test webhooks to https://ops.acme.test/hooks/atlas-stage. Notifications go to the platform test channel.",
+      "metadata": {"category": "on-call", "environment": "staging"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-alpine-current",
+      "title": "Alpine Connector Version 2",
+      "source_uri": "fixture://v3/acme/alpine-current",
+      "content": "# Current Alpine connector\n\nAlpine connector version 2 authenticates with OAuth device flow at /oauth/device/code. Basic authentication is not supported by the current connector.",
+      "metadata": {"category": "integration", "status": "current"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-alpine-legacy",
+      "title": "Alpine Connector Legacy",
+      "source_uri": "fixture://v3/acme/alpine-legacy",
+      "content": "# Legacy Alpine connector\n\nAlpine connector version 1 authenticated with a basic username and password at /api/login. This retired flow remains documented only for migration investigations.",
+      "metadata": {"category": "integration", "status": "retired"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-audit-retention",
+      "title": "Administrative Audit Log Retention",
+      "source_uri": "fixture://v3/acme/audit-retention",
+      "content": "# Administrative audit records\n\nAdministrative audit logs record policy and permission changes. They are retained for four hundred days for compliance investigations.",
+      "metadata": {"category": "retention", "log_type": "audit"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-access-retention",
+      "title": "Gateway Access Log Retention",
+      "source_uri": "fixture://v3/acme/access-retention",
+      "content": "# Gateway access records\n\nGateway access logs record ordinary HTTP requests. They are retained for thirty days for operational troubleshooting.",
+      "metadata": {"category": "retention", "log_type": "access"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-nebula-private",
+      "title": "Nebula Restricted Release Control",
+      "source_uri": "fixture://v3/acme/nebula-private",
+      "content": "# Project Nebula restricted release control\n\nThe emergency production-unlock phrase is VIOLET-ANCHOR. Only the release commander may use it during an approved incident.",
+      "allowed_principals": ["eval-v3-alice"],
+      "metadata": {"category": "restricted-runbook", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-nebula-public",
+      "title": "Nebula Release Escalation",
+      "source_uri": "fixture://v3/acme/nebula-public",
+      "content": "# Project Nebula release help\n\nEngineers without restricted release-control access must contact the release commander. They must not attempt the emergency production unlock themselves.",
+      "metadata": {"category": "runbook", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-payroll-private",
+      "title": "Restricted Payroll Export Calendar",
+      "source_uri": "fixture://v3/acme/payroll-private",
+      "content": "# Restricted payroll export\n\nThe payroll export is frozen on January 14 at 18:00 UTC. Only payroll controller Carol may access the export calendar and release checklist.",
+      "allowed_principals": ["eval-v3-carol"],
+      "metadata": {"category": "restricted-payroll", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-payroll-public",
+      "title": "Payroll Export Access Requests",
+      "source_uri": "fixture://v3/acme/payroll-public",
+      "content": "# Requesting payroll export assistance\n\nEmployees without payroll-controller access should open a confidential finance-support request. Finance will provide an approved status update without exposing the restricted export calendar.",
+      "metadata": {"category": "payroll", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-aurora",
+      "title": "Acme Project Aurora Routing",
+      "source_uri": "fixture://v3/acme/aurora",
+      "content": "# Project Aurora routing\n\nFor Acme, the internal routing codename for Project Aurora is Maple, and the owning group is warehouse operations.",
+      "metadata": {"category": "project", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-globex",
+      "document_id": "v3-globex-aurora",
+      "title": "Globex Project Aurora Routing",
+      "source_uri": "fixture://v3/globex/aurora",
+      "content": "# Project Aurora routing\n\nFor Globex, the internal routing codename for Project Aurora is Topaz, and the owning group is field research.",
+      "metadata": {"category": "project", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-acme",
+      "document_id": "v3-acme-mercury",
+      "title": "Acme Mercury Billing Region",
+      "source_uri": "fixture://v3/acme/mercury",
+      "content": "# Project Mercury billing location\n\nAcme processes Project Mercury invoices in the eu-west-3 billing region. The finance owner is the Dublin operations team.",
+      "metadata": {"category": "project", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v3-globex",
+      "document_id": "v3-globex-mercury",
+      "title": "Globex Mercury Billing Region",
+      "source_uri": "fixture://v3/globex/mercury",
+      "content": "# Project Mercury billing location\n\nGlobex processes Project Mercury invoices in the us-central-2 billing region. The finance owner is the Chicago research team.",
+      "metadata": {"category": "project", "language": "en"}
+    }
+  ],
+  "queries": [
+    {
+      "id": "v3-exact-error-code",
+      "category": "exact-identifier",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "QLZ-739 callback timestamp",
+      "gold_chunk_ids": ["v3-acme-webhook-error:v000001:c0000"]
+    },
+    {
+      "id": "v3-exact-sku",
+      "category": "exact-identifier",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "SKU-K4X-991 graphite left-handed adapter",
+      "gold_chunk_ids": ["v3-acme-torque-adapter:v000001:c0000"]
+    },
+    {
+      "id": "v3-exact-config-key",
+      "category": "exact-identifier",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "max_replay_gap_ms 45000",
+      "gold_chunk_ids": ["v3-acme-replay-config:v000001:c0000"]
+    },
+    {
+      "id": "v3-exact-http-header",
+      "category": "exact-identifier",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "X-RagHub-Trace retrieval stages",
+      "gold_chunk_ids": ["v3-acme-trace-header:v000001:c0000"]
+    },
+    {
+      "id": "v3-semantic-stop-renewal",
+      "category": "semantic-paraphrase",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "How do I avoid being charged again while keeping access for the time I already paid for?",
+      "gold_chunk_ids": ["v3-acme-membership:v000001:c0000"]
+    },
+    {
+      "id": "v3-semantic-six-week-recovery",
+      "category": "semantic-paraphrase",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "Can operations bring back records removed six weeks ago?",
+      "gold_chunk_ids": ["v3-acme-backups:v000001:c0000"]
+    },
+    {
+      "id": "v3-semantic-no-outage-release",
+      "category": "semantic-paraphrase",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "What release approach lets us verify the new version before switching live traffic and quickly switch back?",
+      "gold_chunk_ids": ["v3-acme-blue-green:v000001:c0000"]
+    },
+    {
+      "id": "v3-semantic-invoice-address",
+      "category": "semantic-paraphrase",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "Where should I correct our company's registered location so the next bill is issued correctly?",
+      "gold_chunk_ids": ["v3-acme-invoice-address:v000001:c0000"]
+    },
+    {
+      "id": "v3-cross-language-umbrella",
+      "category": "cross-language",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "访客下雨时在哪里借蓝色雨伞？",
+      "gold_chunk_ids": ["v3-acme-umbrellas:v000001:c0000"]
+    },
+    {
+      "id": "v3-cross-language-travel-receipt",
+      "category": "cross-language",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "How many days after returning from a trip do I have to submit my hotel receipt?",
+      "gold_chunk_ids": ["v3-acme-travel-receipts:v000001:c0000"]
+    },
+    {
+      "id": "v3-cross-language-parental-leave",
+      "category": "cross-language",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "计划育儿假时需要提前多少天通知人事？",
+      "gold_chunk_ids": ["v3-acme-parental-leave:v000001:c0000"]
+    },
+    {
+      "id": "v3-near-duplicate-atlas-production",
+      "category": "near-duplicate-distractor",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "Project Atlas production rotation webhook endpoint",
+      "gold_chunk_ids": ["v3-acme-atlas-production:v000001:c0000"]
+    },
+    {
+      "id": "v3-near-duplicate-alpine-current",
+      "category": "near-duplicate-distractor",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "current Alpine connector version 2 authentication endpoint",
+      "gold_chunk_ids": ["v3-acme-alpine-current:v000001:c0000"]
+    },
+    {
+      "id": "v3-near-duplicate-audit-retention",
+      "category": "near-duplicate-distractor",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "administrative permission-change audit log retention",
+      "gold_chunk_ids": ["v3-acme-audit-retention:v000001:c0000"]
+    },
+    {
+      "id": "v3-acl-nebula-allowed",
+      "category": "acl",
+      "tenant_id": "eval-smoke-v3-acme",
+      "principal_id": "eval-v3-alice",
+      "query": "Project Nebula emergency production unlock phrase VIOLET-ANCHOR",
+      "gold_chunk_ids": ["v3-acme-nebula-private:v000001:c0000"]
+    },
+    {
+      "id": "v3-acl-nebula-denied",
+      "category": "acl",
+      "tenant_id": "eval-smoke-v3-acme",
+      "principal_id": "eval-v3-bob",
+      "query": "Project Nebula restricted release control emergency production unlock",
+      "gold_chunk_ids": ["v3-acme-nebula-public:v000001:c0000"],
+      "forbidden_chunk_ids": ["v3-acme-nebula-private:v000001:c0000"]
+    },
+    {
+      "id": "v3-acl-payroll-denied",
+      "category": "acl",
+      "tenant_id": "eval-smoke-v3-acme",
+      "principal_id": "eval-v3-dave",
+      "query": "payroll export calendar access and status update",
+      "gold_chunk_ids": ["v3-acme-payroll-public:v000001:c0000"],
+      "forbidden_chunk_ids": ["v3-acme-payroll-private:v000001:c0000"]
+    },
+    {
+      "id": "v3-tenant-aurora-acme",
+      "category": "tenant-boundary",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "Project Aurora internal routing codename",
+      "gold_chunk_ids": ["v3-acme-aurora:v000001:c0000"],
+      "forbidden_chunk_ids": ["v3-globex-aurora:v000001:c0000"]
+    },
+    {
+      "id": "v3-tenant-aurora-globex",
+      "category": "tenant-boundary",
+      "tenant_id": "eval-smoke-v3-globex",
+      "query": "Project Aurora internal routing codename",
+      "gold_chunk_ids": ["v3-globex-aurora:v000001:c0000"],
+      "forbidden_chunk_ids": ["v3-acme-aurora:v000001:c0000"]
+    },
+    {
+      "id": "v3-tenant-mercury-acme",
+      "category": "tenant-boundary",
+      "tenant_id": "eval-smoke-v3-acme",
+      "query": "Project Mercury invoice billing region",
+      "gold_chunk_ids": ["v3-acme-mercury:v000001:c0000"],
+      "forbidden_chunk_ids": ["v3-globex-mercury:v000001:c0000"]
+    }
+  ]
+}

@@ -1,9 +1,10 @@
 openapi: 3.1.0
 info:
   title: RAGHub API
-  version: 0.2.0
+  version: 0.3.0
   description: |
-    Development contract for the PostgreSQL FTS and exact pgvector Dense baselines.
+    Development contract for the PostgreSQL FTS, exact pgvector Dense, and
+    fail-closed Hybrid RRF baselines.
     X-Tenant-ID and X-Principal-ID are authorization context supplied by a
     trusted upstream in production; they are not an authentication mechanism.
 servers:
@@ -174,9 +175,13 @@ components:
           default: 5
         mode:
           type: string
-          enum: [fts, dense]
+          enum: [fts, dense, hybrid]
           default: fts
-          description: Selects one independently measurable retrieval baseline.
+          description: |
+            Selects one independently measurable retrieval mode. Hybrid runs
+            FTS and Dense with candidate floors of 20 (effective depth is
+            max(top_k, 20)), then applies reciprocal rank fusion with k=60. A
+            failed branch fails the request.
     SearchResult:
       type: object
       required: [hits, traces]
@@ -221,7 +226,9 @@ components:
           description: Raw citation text, never contextualized index text.
         score:
           type: number
-          description: Final rank score for the active retrieval mode.
+          description: |
+            Final rank score for the active retrieval mode. For hybrid this is
+            the reciprocal-rank-fusion score, not a lexical or cosine score.
         stage_scores:
           type: array
           items:
@@ -233,6 +240,7 @@ components:
       properties:
         stage:
           type: string
+          description: One of fts, dense, or rrf for the current baselines.
         rank:
           type: integer
           minimum: 1

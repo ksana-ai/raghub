@@ -100,7 +100,11 @@ func main() {
 		os.Exit(2)
 	}
 	ingestionService := ingest.NewServiceWithEmbedder(store, chunker, embedder)
-	retrievalService := retrieval.NewServiceWithDense(store, store, embedder)
+	retrievalService, err := retrieval.NewServiceWithHybrid(store, store, embedder, retrieval.DefaultHybridConfig())
+	if err != nil {
+		logger.Error("configure hybrid retriever", "error", err)
+		os.Exit(2)
+	}
 	readinessChecker, err := readiness.New(pool, embedder, 10*time.Second)
 	if err != nil {
 		logger.Error("configure readiness checker", "error", err)

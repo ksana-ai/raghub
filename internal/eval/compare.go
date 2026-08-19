@@ -8,11 +8,18 @@ import (
 	"io"
 	"math"
 	"os"
+	"reflect"
 	"slices"
 	"strings"
 )
 
-const ComparisonSchemaVersion = "raghub.eval.comparison/v1"
+const (
+	ComparisonSchemaVersion         = "raghub.eval.comparison/v1"
+	ThreeWayComparisonSchemaVersion = "raghub.eval.comparison/v2"
+	threeWayHybridRRFK              = 60
+	threeWayFTSCandidateK           = 20
+	threeWayDenseCandidateK         = 20
+)
 
 // Comparison is a paired smoke-run comparison. It deliberately carries no
 // complete/pass verdict: smoke scope and deterministic run gates are preserved
@@ -41,6 +48,37 @@ type ComparisonDelta struct {
 	Direction string             `json:"direction"`
 	Metrics   RankingMetrics     `json:"metrics"`
 	Latency   LatencyPercentiles `json:"latency"`
+}
+
+// ThreeWayComparison is the strict FTS/Dense/Hybrid comparison artifact. The
+// v1 pairwise shape remains available for earlier evidence and ad-hoc ablation
+// comparisons.
+type ThreeWayComparison struct {
+	SchemaVersion string                  `json:"schema_version"`
+	Status        string                  `json:"status"`
+	Dataset       DatasetManifest         `json:"dataset"`
+	CorpusSHA256  string                  `json:"corpus_sha256"`
+	TopK          int                     `json:"top_k"`
+	QueryCount    int                     `json:"query_count"`
+	FTS           ComparisonSide          `json:"fts"`
+	Dense         ComparisonSide          `json:"dense"`
+	Hybrid        ComparisonSide          `json:"hybrid"`
+	Categories    []ThreeWayCategory      `json:"categories"`
+	Deltas        ThreeWayComparisonDelta `json:"deltas"`
+}
+
+type ThreeWayCategory struct {
+	Category   string         `json:"category"`
+	QueryCount int            `json:"query_count"`
+	FTS        RankingMetrics `json:"fts"`
+	Dense      RankingMetrics `json:"dense"`
+	Hybrid     RankingMetrics `json:"hybrid"`
+}
+
+type ThreeWayComparisonDelta struct {
+	DenseMinusFTS    ComparisonDelta `json:"dense_minus_fts"`
+	HybridMinusFTS   ComparisonDelta `json:"hybrid_minus_fts"`
+	HybridMinusDense ComparisonDelta `json:"hybrid_minus_dense"`
 }
 
 func LoadManifest(path string) (Manifest, error) {
@@ -113,6 +151,312 @@ func CompareManifests(baseline, candidate Manifest) (Comparison, error) {
 			Latency:   subtractLatency(candidate.Summary.Latency, baseline.Summary.Latency),
 		},
 	}, nil
+}
+
+// CompareThreeManifests validates each report independently, verifies every
+// pair has identical inputs and runtime provenance, and then labels each side
+// by its explicit retriever mode. No score is promoted to a release verdict.
+func CompareThreeManifests(fts, dense, hybrid Manifest) (ThreeWayComparison, error) {
+	if _, err := CompareManifests(fts, dense); err != nil {
+		return ThreeWayComparison{}, fmt.Errorf("compare FTS and Dense: %w", err)
+	}
+	if _, err := CompareManifests(fts, hybrid); err != nil {
+		return ThreeWayComparison{}, fmt.Errorf("compare FTS and Hybrid: %w", err)
+	}
+	if _, err := CompareManifests(dense, hybrid); err != nil {
+		return ThreeWayComparison{}, fmt.Errorf("compare Dense and Hybrid: %w", err)
+	}
+	if err := validateThreeWaySide("FTS", fts, "postgres_fts", "fts"); err != nil {
+		return ThreeWayComparison{}, err
+	}
+	if err := validateThreeWaySide("Dense", dense, "postgres_dense", "dense"); err != nil {
+		return ThreeWayComparison{}, err
+	}
+	if err := validateThreeWaySide("Hybrid", hybrid, "postgres_hybrid_rrf", "hybrid"); err != nil {
+		return ThreeWayComparison{}, err
+	}
+	if err := validateThreeWayBranchConfigs(fts, dense, hybrid); err != nil {
+		return ThreeWayComparison{}, err
+	}
+	categories, err := threeWayCategories(fts, dense, hybrid)
+	if err != nil {
+		return ThreeWayComparison{}, err
+	}
+
+	return ThreeWayComparison{
+		SchemaVersion: ThreeWayComparisonSchemaVersion,
+		Status:        SmokeStatus,
+		Dataset:       fts.Dataset,
+		CorpusSHA256:  fts.CorpusSHA256,
+		TopK:          fts.TopK,
+		QueryCount:    len(fts.PerQuery),
+		FTS:           comparisonSide(fts),
+		Dense:         comparisonSide(dense),
+		Hybrid:        comparisonSide(hybrid),
+		Categories:    categories,
+		Deltas: ThreeWayComparisonDelta{
+			DenseMinusFTS:    comparisonDelta("dense-minus-fts", dense, fts),
+			HybridMinusFTS:   comparisonDelta("hybrid-minus-fts", hybrid, fts),
+			HybridMinusDense: comparisonDelta("hybrid-minus-dense", hybrid, dense),
+		},
+	}, nil
+}
+
+func threeWayCategories(fts, dense, hybrid Manifest) ([]ThreeWayCategory, error) {
+	categoryNames := make([]string, 0)
+	metricsByCategory := make(map[string][3][]RankingMetrics)
+	for index := range fts.PerQuery {
+		category := strings.TrimSpace(fts.PerQuery[index].Category)
+		if category == "" {
+			return nil, fmt.Errorf("three-way comparison: per_query[%d] category is required", index)
+		}
+		metrics, exists := metricsByCategory[category]
+		if !exists {
+			categoryNames = append(categoryNames, category)
+		}
+		metrics[0] = append(metrics[0], fts.PerQuery[index].Metrics)
+		metrics[1] = append(metrics[1], dense.PerQuery[index].Metrics)
+		metrics[2] = append(metrics[2], hybrid.PerQuery[index].Metrics)
+		metricsByCategory[category] = metrics
+	}
+	slices.Sort(categoryNames)
+	categories := make([]ThreeWayCategory, 0, len(categoryNames))
+	for _, category := range categoryNames {
+		metrics := metricsByCategory[category]
+		categories = append(categories, ThreeWayCategory{
+			Category:   category,
+			QueryCount: len(metrics[0]),
+			FTS:        meanMetrics(metrics[0]),
+			Dense:      meanMetrics(metrics[1]),
+			Hybrid:     meanMetrics(metrics[2]),
+		})
+	}
+	return categories, nil
+}
+
+func validateThreeWaySide(label string, manifest Manifest, wantName, wantMode string) error {
+	if manifest.Retriever.Name != wantName {
+		return fmt.Errorf("validate %s manifest: retriever name must be %q", label, wantName)
+	}
+	value, ok := manifest.Retriever.Config["mode"]
+	if !ok {
+		return fmt.Errorf("validate %s manifest: retriever config mode is required", label)
+	}
+	mode, ok := value.(string)
+	if !ok || mode != wantMode {
+		return fmt.Errorf("validate %s manifest: retriever config mode must be %q", label, wantMode)
+	}
+	if mode == "hybrid" {
+		if err := validateThreeWayHybridConfig(manifest.Retriever.Config); err != nil {
+			return fmt.Errorf("validate %s manifest: %w", label, err)
+		}
+	}
+	for index, query := range manifest.PerQuery {
+		if err := validateQueryEvidence(mode, query, manifest.Retriever.Config, manifest.TopK); err != nil {
+			return fmt.Errorf("validate %s manifest: per_query[%d]: %w", label, index, err)
+		}
+	}
+	return nil
+}
+
+func validateThreeWayBranchConfigs(fts, dense, hybrid Manifest) error {
+	for _, branch := range []struct {
+		name       string
+		standalone map[string]any
+	}{
+		{name: "fts", standalone: fts.Retriever.Config},
+		{name: "dense", standalone: dense.Retriever.Config},
+	} {
+		nested, ok := hybrid.Retriever.Config[branch.name].(map[string]any)
+		if !ok {
+			return fmt.Errorf("validate Hybrid manifest: retriever config %s branch is required", branch.name)
+		}
+		normalizedNested, _, err := normalizeAndHashConfig(nested)
+		if err != nil {
+			return fmt.Errorf("validate Hybrid manifest: normalize nested %s config: %w", branch.name, err)
+		}
+		normalizedStandalone, _, err := normalizeAndHashConfig(branch.standalone)
+		if err != nil {
+			return fmt.Errorf("validate %s manifest: normalize retriever config: %w", strings.ToUpper(branch.name), err)
+		}
+		if !reflect.DeepEqual(normalizedNested, normalizedStandalone) {
+			return fmt.Errorf("three-way comparison: Hybrid nested %s config differs from standalone %s config", branch.name, branch.name)
+		}
+	}
+	return nil
+}
+
+func validateThreeWayHybridConfig(config map[string]any) error {
+	for key, want := range map[string]string{
+		"fusion":         "reciprocal_rank_fusion",
+		"branch_failure": "fail_closed",
+	} {
+		if value, ok := config[key].(string); !ok || value != want {
+			return fmt.Errorf("retriever config %s must be %q", key, want)
+		}
+	}
+	for key, want := range map[string]int{
+		"rrf_k":             threeWayHybridRRFK,
+		"fts_candidate_k":   threeWayFTSCandidateK,
+		"dense_candidate_k": threeWayDenseCandidateK,
+	} {
+		if value, ok := configInteger(config[key]); !ok || value != want {
+			return fmt.Errorf("retriever config %s must be %d", key, want)
+		}
+	}
+	for key, wantMode := range map[string]string{"fts": "fts", "dense": "dense"} {
+		branch, ok := config[key].(map[string]any)
+		if !ok {
+			return fmt.Errorf("retriever config %s branch is required", key)
+		}
+		if value, ok := branch["mode"].(string); !ok || value != wantMode {
+			return fmt.Errorf("retriever config %s branch mode must be %q", key, wantMode)
+		}
+	}
+	return nil
+}
+
+func configInteger(value any) (int, bool) {
+	switch value := value.(type) {
+	case int:
+		return value, true
+	case int64:
+		return int(value), int64(int(value)) == value
+	case float64:
+		converted := int(value)
+		return converted, float64(converted) == value
+	case json.Number:
+		converted, err := value.Int64()
+		if err != nil {
+			return 0, false
+		}
+		return int(converted), int64(int(converted)) == converted
+	default:
+		return 0, false
+	}
+}
+
+func validateQueryEvidence(mode string, query QueryResult, config map[string]any, topK int) error {
+	wantTraces := map[string][]string{
+		"fts":    {"fts"},
+		"dense":  {"query_embedding", "dense"},
+		"hybrid": {"fts", "query_embedding", "dense", "rrf_fusion"},
+	}[mode]
+	if len(query.Traces) != len(wantTraces) {
+		return fmt.Errorf("%s trace stages must be %v", mode, wantTraces)
+	}
+	for index, trace := range query.Traces {
+		if trace.Stage != wantTraces[index] {
+			return fmt.Errorf("%s trace stages must be %v", mode, wantTraces)
+		}
+		if math.IsNaN(trace.DurationMS) || math.IsInf(trace.DurationMS, 0) || trace.DurationMS < 0 {
+			return fmt.Errorf("%s trace %q duration must be finite and non-negative", mode, trace.Stage)
+		}
+	}
+	for hitIndex, hit := range query.Hits {
+		if math.IsNaN(hit.Score) || math.IsInf(hit.Score, 0) {
+			return fmt.Errorf("%s hit %d final score must be finite", mode, hitIndex)
+		}
+		switch mode {
+		case "fts", "dense":
+			if len(hit.StageScores) != 1 {
+				return fmt.Errorf("%s hit %d must contain exactly one %s stage score", mode, hitIndex, mode)
+			}
+			score := hit.StageScores[0]
+			if score.Stage != mode || score.Rank != hit.Rank || !nearlyEqual(score.Score, hit.Score) ||
+				math.IsNaN(score.Score) || math.IsInf(score.Score, 0) {
+				return fmt.Errorf("%s hit %d stage score must match final rank and score", mode, hitIndex)
+			}
+		case "hybrid":
+			// Hybrid evidence is validated as a query after all hits are read so
+			// source-rank uniqueness and final ordering can be checked together.
+		default:
+			return fmt.Errorf("unsupported evidence mode %q", mode)
+		}
+	}
+	if mode == "hybrid" {
+		if err := validateHybridQueryEvidence(query, config, topK); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateHybridQueryEvidence(query QueryResult, config map[string]any, topK int) error {
+	rrfK, _ := configInteger(config["rrf_k"])
+	ftsCandidateK, _ := configInteger(config["fts_candidate_k"])
+	denseCandidateK, _ := configInteger(config["dense_candidate_k"])
+	branchLimits := map[string]int{
+		"fts":   max(topK, ftsCandidateK),
+		"dense": max(topK, denseCandidateK),
+	}
+	seenRanks := map[string]map[int]struct{}{
+		"fts":   {},
+		"dense": {},
+	}
+	for hitIndex, hit := range query.Hits {
+		if err := validateHybridHitEvidence(hitIndex, hit, rrfK, branchLimits, seenRanks); err != nil {
+			return err
+		}
+		if hitIndex == 0 {
+			continue
+		}
+		previous := query.Hits[hitIndex-1]
+		if previous.Score < hit.Score || (previous.Score == hit.Score && previous.ChunkID > hit.ChunkID) {
+			return fmt.Errorf("hybrid final hits must be ordered by score descending then chunk_id ascending")
+		}
+	}
+	return nil
+}
+
+func validateHybridHitEvidence(
+	hitIndex int,
+	hit HitRecord,
+	rrfK int,
+	branchLimits map[string]int,
+	seenRanks map[string]map[int]struct{},
+) error {
+	if len(hit.StageScores) < 2 || len(hit.StageScores) > 3 {
+		return fmt.Errorf("hybrid hit %d must contain one or two source scores followed by rrf", hitIndex)
+	}
+	sourceScores := hit.StageScores[:len(hit.StageScores)-1]
+	if len(sourceScores) == 1 && sourceScores[0].Stage != "fts" && sourceScores[0].Stage != "dense" {
+		return fmt.Errorf("hybrid hit %d source stage must be fts or dense", hitIndex)
+	}
+	if len(sourceScores) == 2 && (sourceScores[0].Stage != "fts" || sourceScores[1].Stage != "dense") {
+		return fmt.Errorf("hybrid hit %d source stages must be ordered fts then dense", hitIndex)
+	}
+	expectedRRF := 0.0
+	for _, score := range sourceScores {
+		if score.Rank <= 0 || math.IsNaN(score.Score) || math.IsInf(score.Score, 0) {
+			return fmt.Errorf("hybrid hit %d source rank and score must be positive-rank finite evidence", hitIndex)
+		}
+		if score.Rank > branchLimits[score.Stage] {
+			return fmt.Errorf("hybrid hit %d %s source rank %d exceeds candidate depth %d", hitIndex, score.Stage, score.Rank, branchLimits[score.Stage])
+		}
+		if _, duplicate := seenRanks[score.Stage][score.Rank]; duplicate {
+			return fmt.Errorf("hybrid %s source rank %d appears more than once", score.Stage, score.Rank)
+		}
+		seenRanks[score.Stage][score.Rank] = struct{}{}
+		expectedRRF += 1 / float64(rrfK+score.Rank)
+	}
+	rrf := hit.StageScores[len(hit.StageScores)-1]
+	if rrf.Stage != "rrf" || rrf.Rank != hit.Rank || !nearlyEqual(rrf.Score, hit.Score) ||
+		math.IsNaN(rrf.Score) || math.IsInf(rrf.Score, 0) {
+		return fmt.Errorf("hybrid hit %d rrf stage must match final rank and score", hitIndex)
+	}
+	if !nearlyEqual(hit.Score, expectedRRF) {
+		return fmt.Errorf("hybrid hit %d rrf score does not match source ranks and rrf_k", hitIndex)
+	}
+	return nil
+}
+
+func comparisonDelta(direction string, candidate, baseline Manifest) ComparisonDelta {
+	return ComparisonDelta{
+		Direction: direction,
+		Metrics:   subtractMetrics(candidate.Summary.Metrics, baseline.Summary.Metrics),
+		Latency:   subtractLatency(candidate.Summary.Latency, baseline.Summary.Latency),
+	}
 }
 
 func validateComparableManifest(side string, manifest Manifest) error {
@@ -317,6 +661,14 @@ func MarshalComparison(comparison Comparison) ([]byte, error) {
 	data, err := json.MarshalIndent(comparison, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("marshal eval comparison: %w", err)
+	}
+	return append(data, '\n'), nil
+}
+
+func MarshalThreeWayComparison(comparison ThreeWayComparison) ([]byte, error) {
+	data, err := json.MarshalIndent(comparison, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal three-way eval comparison: %w", err)
 	}
 	return append(data, '\n'), nil
 }
