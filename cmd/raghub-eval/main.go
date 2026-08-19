@@ -1,0 +1,204 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime/debug"
+	"strings"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	evalrun "raghub/internal/eval"
+	"raghub/internal/ingest"
+	"raghub/internal/retrieval"
+	postgresstore "raghub/internal/store/postgres"
+)
+
+const (
+	defaultDataset      = "datasets/smoke/v1.json"
+	defaultChunkRunes   = 1200
+	defaultOverlapRunes = 120
+)
+
+func main() {
+	args := os.Args[1:]
+	logicalArgv := append([]string{"raghub-eval"}, args...)
+	os.Exit(run(context.Background(), args, os.Getenv, os.Stdout, os.Stderr, commandString(logicalArgv)))
+}
+
+func run(ctx context.Context, args []string, getenv func(string) string, stdout, stderr io.Writer, command string) int {
+	flags := flag.NewFlagSet("raghub-eval", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	datasetPath := flags.String("dataset", defaultDataset, "path to a versioned JSON evaluation dataset")
+	outputPath := flags.String("output", "-", "manifest output path, or - for stdout")
+	topK := flags.Int("top-k", 5, "number of ranked chunks to evaluate")
+	migrate := flags.Bool("migrate", false, "apply database migrations before evaluation")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "raghub-eval: unexpected positional arguments")
+		return 2
+	}
+	if *topK < 1 || *topK > 50 {
+		fmt.Fprintln(stderr, "raghub-eval: -top-k must be between 1 and 50")
+		return 2
+	}
+
+	databaseURL := strings.TrimSpace(getenv("RAGHUB_DATABASE_URL"))
+	if databaseURL == "" {
+		fmt.Fprintln(stderr, "raghub-eval: RAGHUB_DATABASE_URL is required")
+		return 2
+	}
+	loaded, err := evalrun.LoadDataset(*datasetPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "raghub-eval: %v\n", err)
+		return 1
+	}
+
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		fmt.Fprintf(stderr, "raghub-eval: connect to PostgreSQL: %v\n", err)
+		return 1
+	}
+	defer pool.Close()
+	if err := pool.Ping(ctx); err != nil {
+		fmt.Fprintf(stderr, "raghub-eval: ping PostgreSQL: %v\n", err)
+		return 1
+	}
+	if *migrate {
+		if err := postgresstore.ApplyMigrations(ctx, pool); err != nil {
+			fmt.Fprintf(stderr, "raghub-eval: apply migrations: %v\n", err)
+			return 1
+		}
+	}
+
+	chunker, err := ingest.NewMarkdownChunker(defaultChunkRunes, defaultOverlapRunes)
+	if err != nil {
+		fmt.Fprintf(stderr, "raghub-eval: configure chunker: %v\n", err)
+		return 1
+	}
+	store := postgresstore.New(pool)
+	ingestor := ingest.NewService(store, chunker)
+	searcher := retrieval.NewService(store)
+
+	databaseVersion := ""
+	if err := pool.QueryRow(ctx, "SHOW server_version").Scan(&databaseVersion); err != nil {
+		fmt.Fprintf(stderr, "raghub-eval: read PostgreSQL version: %v\n", err)
+		return 1
+	}
+	manifest, runErr := evalrun.NewRunner(ingestor, searcher).Run(ctx, loaded, evalrun.Options{
+		TopK:          *topK,
+		RetrieverName: "postgres_fts",
+		RetrieverConfig: map[string]any{
+			"backend":             "postgresql",
+			"fts_config":          "simple",
+			"query_parser":        "plainto_tsquery",
+			"chunker":             "markdown",
+			"chunk_max_runes":     defaultChunkRunes,
+			"chunk_overlap_runes": defaultOverlapRunes,
+		},
+		DatabaseVersion: databaseVersion,
+		CodeRevision:    codeRevision(),
+		Command:         command,
+	})
+	data, marshalErr := evalrun.MarshalManifest(manifest)
+	if marshalErr != nil {
+		fmt.Fprintf(stderr, "raghub-eval: %v\n", marshalErr)
+		return 1
+	}
+	if err := writeOutput(*outputPath, data, stdout); err != nil {
+		fmt.Fprintf(stderr, "raghub-eval: write manifest: %v\n", err)
+		return 1
+	}
+	if runErr != nil {
+		fmt.Fprintf(stderr, "raghub-eval: evaluation failed: %v\n", runErr)
+		return 1
+	}
+	return 0
+}
+
+func writeOutput(path string, data []byte, stdout io.Writer) (err error) {
+	if path == "-" {
+		_, err := stdout.Write(data)
+		return err
+	}
+
+	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer func() {
+		_ = temporary.Close()
+		if err != nil {
+			_ = os.Remove(temporaryPath)
+		}
+	}()
+	if err = temporary.Chmod(0o644); err != nil {
+		return err
+	}
+	if _, err = temporary.Write(data); err != nil {
+		return err
+	}
+	if err = temporary.Sync(); err != nil {
+		return err
+	}
+	if err = temporary.Close(); err != nil {
+		return err
+	}
+	if err = os.Rename(temporaryPath, path); err != nil {
+		return err
+	}
+	return nil
+}
+
+func codeRevision() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "uncommitted"
+	}
+	var revision string
+	modified := false
+	for _, setting := range info.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			revision = setting.Value
+		case "vcs.modified":
+			modified = setting.Value == "true"
+		}
+	}
+	return formatCodeRevision(revision, modified)
+}
+
+func formatCodeRevision(revision string, modified bool) string {
+	if revision == "" {
+		return "uncommitted"
+	}
+	if modified {
+		return revision + "+dirty"
+	}
+	return revision
+}
+
+// commandString reconstructs the process argv as a shell-readable command.
+// The original user quoting is not available after process startup.
+func commandString(args []string) string {
+	quoted := make([]string, 0, len(args))
+	for _, arg := range args {
+		quoted = append(quoted, quoteCommandArg(arg))
+	}
+	return strings.Join(quoted, " ")
+}
+
+func quoteCommandArg(arg string) string {
+	const safe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%+=:,./-"
+	if arg != "" && strings.IndexFunc(arg, func(r rune) bool { return !strings.ContainsRune(safe, r) }) == -1 {
+		return arg
+	}
+	return "'" + strings.ReplaceAll(arg, "'", `'"'"'`) + "'"
+}

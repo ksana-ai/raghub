@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: raghub
+      POSTGRES_USER: raghub
+      POSTGRES_PASSWORD: raghub
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raghub -d raghub"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - raghub-postgres:/var/lib/postgresql/data
+
+volumes:
+  raghub-postgres:

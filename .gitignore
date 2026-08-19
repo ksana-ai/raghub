@@ -1,0 +1,6 @@
+.DS_Store
+.env
+/bin/
+/coverage.out
+/artifacts/evals/*.json
+!/artifacts/evals/.gitkeep

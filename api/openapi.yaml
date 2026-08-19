@@ -1,0 +1,256 @@
+openapi: 3.1.0
+info:
+  title: RAGHub API
+  version: 0.1.0
+  description: |
+    Development contract for the first PostgreSQL FTS vertical slice.
+    X-Tenant-ID and X-Principal-ID are authorization context supplied by a
+    trusted upstream in production; they are not an authentication mechanism.
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      operationId: health
+      responses:
+        "200":
+          description: Process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+  /readyz:
+    get:
+      operationId: ready
+      responses:
+        "200":
+          description: Database is reachable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+        "503":
+          $ref: "#/components/responses/Problem"
+  /v1/documents:
+    post:
+      operationId: ingestDocument
+      parameters:
+        - $ref: "#/components/parameters/TenantID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestDocumentRequest"
+      responses:
+        "201":
+          description: A new immutable document version was activated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestDocumentResponse"
+        "200":
+          description: The active version already has the same fingerprint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestDocumentResponse"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /v1/search:
+    post:
+      operationId: search
+      parameters:
+        - $ref: "#/components/parameters/TenantID"
+        - $ref: "#/components/parameters/PrincipalID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Search completed; hits may be empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResult"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+components:
+  parameters:
+    TenantID:
+      name: X-Tenant-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    PrincipalID:
+      name: X-Principal-ID
+      in: header
+      required: false
+      description: Empty means only tenant-wide documents are visible.
+      schema:
+        type: string
+        maxLength: 128
+  responses:
+    Problem:
+      description: Structured request or service error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    Status:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+    IngestDocumentRequest:
+      type: object
+      additionalProperties: false
+      required: [title, content]
+      properties:
+        document_id:
+          type: string
+          description: Generated when omitted.
+        title:
+          type: string
+          minLength: 1
+          maxLength: 512
+        source_uri:
+          type: string
+          maxLength: 2048
+        content:
+          type: string
+          minLength: 1
+        allowed_principals:
+          type: array
+          description: Empty means tenant-wide visibility.
+          items:
+            type: string
+        metadata: {}
+    IngestDocumentResponse:
+      type: object
+      required: [tenant_id, document_id, version, chunk_ids, created_at, unchanged]
+      properties:
+        tenant_id:
+          type: string
+        document_id:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        chunk_ids:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        unchanged:
+          type: boolean
+    SearchRequest:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        top_k:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 5
+    SearchResult:
+      type: object
+      required: [hits, traces]
+      properties:
+        hits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchHit"
+        traces:
+          type: array
+          items:
+            $ref: "#/components/schemas/StageTrace"
+    SearchHit:
+      type: object
+      required:
+        - chunk_id
+        - document_id
+        - document_version
+        - title
+        - heading_path
+        - content
+        - score
+        - stage_scores
+        - metadata
+      properties:
+        chunk_id:
+          type: string
+        document_id:
+          type: string
+        document_version:
+          type: integer
+        title:
+          type: string
+        source_uri:
+          type: string
+        heading_path:
+          type: array
+          items:
+            type: string
+        content:
+          type: string
+          description: Raw citation text, never contextualized index text.
+        score:
+          type: number
+          description: Final rank score for the active retrieval mode.
+        stage_scores:
+          type: array
+          items:
+            $ref: "#/components/schemas/StageScore"
+        metadata: {}
+    StageScore:
+      type: object
+      required: [stage, rank, score]
+      properties:
+        stage:
+          type: string
+        rank:
+          type: integer
+          minimum: 1
+        score:
+          type: number
+    StageTrace:
+      type: object
+      required: [stage, duration_ms]
+      properties:
+        stage:
+          type: string
+        duration_ms:
+          type: number
+          minimum: 0
+    Problem:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string

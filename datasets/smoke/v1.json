@@ -1,0 +1,128 @@
+{
+  "schema_version": "raghub.eval.dataset/v1",
+  "name": "raghub-smoke",
+  "version": "1.0.0",
+  "description": "Eight-query smoke dataset for retrieval quality, ACL, and tenant isolation. Results are local smoke evidence, not production claims.",
+  "documents": [
+    {
+      "tenant_id": "eval-smoke-v1-acme",
+      "document_id": "acme-refunds",
+      "title": "Acme Refund Policy",
+      "source_uri": "fixture://acme/refunds",
+      "content": "# Refund policy\n\nCustomers may request a full refund within seven days after delivery. Approved refunds are returned to the original payment method in three to five business days.",
+      "metadata": {"category": "policy", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v1-acme",
+      "document_id": "acme-http-errors",
+      "title": "HTTP Error Runbook",
+      "source_uri": "fixture://acme/http-errors",
+      "content": "# HTTP errors\n\nHTTP-403 means the server understood the request but refuses to authorize it. Check the caller identity and access policy before retrying.",
+      "metadata": {"category": "runbook", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v1-acme",
+      "document_id": "acme-photosynthesis",
+      "title": "Photosynthesis Notes",
+      "source_uri": "fixture://acme/photosynthesis",
+      "content": "# Photosynthesis\n\nGreen plants use sunlight to turn water and carbon dioxide into sugars, storing light energy as chemical energy and releasing oxygen.",
+      "metadata": {"category": "science", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v1-acme",
+      "document_id": "acme-apollo-private",
+      "title": "Apollo Database Failover",
+      "source_uri": "fixture://acme/apollo-private",
+      "content": "# Project Apollo restricted runbook\n\nThe database failover authorization code is ORION-7. Only the incident commander may start the failover procedure.",
+      "allowed_principals": ["alice"],
+      "metadata": {"category": "restricted-runbook", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v1-acme",
+      "document_id": "acme-apollo-public",
+      "title": "Apollo Access Instructions",
+      "source_uri": "fixture://acme/apollo-public",
+      "content": "# Project Apollo access\n\nUsers without restricted-runbook clearance must contact the on-call incident commander and must not attempt database failover themselves.",
+      "metadata": {"category": "runbook", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v1-acme",
+      "document_id": "acme-zephyr",
+      "title": "Acme Project Zephyr",
+      "source_uri": "fixture://acme/zephyr",
+      "content": "# Project Zephyr\n\nAt Acme, Project Zephyr uses the internal codename Cedar and is owned by the logistics team.",
+      "metadata": {"category": "project", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v1-globex",
+      "document_id": "globex-zephyr",
+      "title": "Globex Project Zephyr",
+      "source_uri": "fixture://globex/zephyr",
+      "content": "# Project Zephyr\n\nAt Globex, Project Zephyr uses the internal codename Quartz and is owned by the research team.",
+      "metadata": {"category": "project", "language": "en"}
+    }
+  ],
+  "queries": [
+    {
+      "id": "refund-window",
+      "category": "policy",
+      "tenant_id": "eval-smoke-v1-acme",
+      "query": "refund policy seven days",
+      "gold_chunk_ids": ["acme-refunds:v000001:c0000"]
+    },
+    {
+      "id": "exact-http-code",
+      "category": "exact-code",
+      "tenant_id": "eval-smoke-v1-acme",
+      "query": "HTTP-403",
+      "gold_chunk_ids": ["acme-http-errors:v000001:c0000"]
+    },
+    {
+      "id": "photosynthesis-terms",
+      "category": "science",
+      "tenant_id": "eval-smoke-v1-acme",
+      "query": "plants sunlight sugars chemical energy",
+      "gold_chunk_ids": ["acme-photosynthesis:v000001:c0000"]
+    },
+    {
+      "id": "acl-allowed",
+      "category": "acl",
+      "tenant_id": "eval-smoke-v1-acme",
+      "principal_id": "alice",
+      "query": "Project Apollo database failover authorization code ORION-7",
+      "gold_chunk_ids": ["acme-apollo-private:v000001:c0000"]
+    },
+    {
+      "id": "acl-denied",
+      "category": "acl",
+      "tenant_id": "eval-smoke-v1-acme",
+      "principal_id": "bob",
+      "query": "Project Apollo restricted runbook",
+      "gold_chunk_ids": ["acme-apollo-public:v000001:c0000"],
+      "forbidden_chunk_ids": ["acme-apollo-private:v000001:c0000"]
+    },
+    {
+      "id": "tenant-acme",
+      "category": "tenant-boundary",
+      "tenant_id": "eval-smoke-v1-acme",
+      "query": "Project Zephyr internal codename",
+      "gold_chunk_ids": ["acme-zephyr:v000001:c0000"],
+      "forbidden_chunk_ids": ["globex-zephyr:v000001:c0000"]
+    },
+    {
+      "id": "tenant-globex",
+      "category": "tenant-boundary",
+      "tenant_id": "eval-smoke-v1-globex",
+      "query": "Project Zephyr internal codename",
+      "gold_chunk_ids": ["globex-zephyr:v000001:c0000"],
+      "forbidden_chunk_ids": ["acme-zephyr:v000001:c0000"]
+    },
+    {
+      "id": "refund-processing-time",
+      "category": "policy",
+      "tenant_id": "eval-smoke-v1-acme",
+      "query": "approved refunds original payment method business days",
+      "gold_chunk_ids": ["acme-refunds:v000001:c0000"]
+    }
+  ]
+}
