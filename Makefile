@@ -3,8 +3,9 @@ DATASET ?= datasets/smoke/v2.json
 FTS_EVAL_OUTPUT ?= artifacts/evals/v2-fts.json
 DENSE_EVAL_OUTPUT ?= artifacts/evals/v2-dense.json
 COMPARE_EVAL_OUTPUT ?= artifacts/evals/v2-fts-vs-dense.json
+EVAL_BINARY ?= /tmp/raghub-eval
 
-.PHONY: db-up db-down run test test-integration vet eval eval-fts eval-dense eval-compare eval-clean-revision eval-paired verify
+.PHONY: db-up db-down run test test-integration vet eval eval-build eval-fts eval-dense eval-compare eval-clean-revision eval-paired verify
 
 db-up:
 	docker compose up -d postgres
@@ -26,11 +27,14 @@ vet:
 
 eval: eval-fts
 
-eval-fts:
-	RAGHUB_DATABASE_URL="$(DATABASE_URL)" go run ./cmd/raghub-eval -migrate -mode fts -dataset "$(DATASET)" -output "$(FTS_EVAL_OUTPUT)"
+eval-build:
+	go build -o "$(EVAL_BINARY)" ./cmd/raghub-eval
 
-eval-dense:
-	RAGHUB_DATABASE_URL="$(DATABASE_URL)" go run ./cmd/raghub-eval -migrate -mode dense -dataset "$(DATASET)" -output "$(DENSE_EVAL_OUTPUT)"
+eval-fts: eval-build
+	RAGHUB_DATABASE_URL="$(DATABASE_URL)" "$(EVAL_BINARY)" -migrate -mode fts -dataset "$(DATASET)" -output "$(FTS_EVAL_OUTPUT)"
+
+eval-dense: eval-build
+	RAGHUB_DATABASE_URL="$(DATABASE_URL)" "$(EVAL_BINARY)" -migrate -mode dense -dataset "$(DATASET)" -output "$(DENSE_EVAL_OUTPUT)"
 
 eval-compare:
 	go run ./cmd/raghub-eval-compare -baseline "$(FTS_EVAL_OUTPUT)" -candidate "$(DENSE_EVAL_OUTPUT)" -output "$(COMPARE_EVAL_OUTPUT)"

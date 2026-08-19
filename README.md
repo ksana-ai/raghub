@@ -139,8 +139,9 @@ make eval-paired
 ```
 
 The target checks for a clean committed revision before making either model
-run, then writes the FTS, Dense, and comparison artifacts under
-`artifacts/evals/` by default.
+run. It builds the evaluator binary so Go embeds the checked VCS revision, then
+writes the FTS, Dense, and comparison artifacts under `artifacts/evals/` by
+default.
 
 Each manifest records the dataset hash, retriever/config identity, runtime
 information, aggregate metrics, and per-query ranks/scores. The comparison tool
