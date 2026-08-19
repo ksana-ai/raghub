@@ -65,8 +65,9 @@ type ingestRequest struct {
 }
 
 type searchRequest struct {
-	Query string `json:"query"`
-	TopK  int    `json:"top_k"`
+	Query string           `json:"query"`
+	TopK  int              `json:"top_k"`
+	Mode  model.SearchMode `json:"mode"`
 }
 
 func (a *API) health(w http.ResponseWriter, _ *http.Request) {
@@ -80,7 +81,7 @@ func (a *API) ready(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := a.readiness.Ping(r.Context()); err != nil {
 		a.logger.ErrorContext(r.Context(), "readiness check failed", "error", err)
-		writeProblem(w, http.StatusServiceUnavailable, "not_ready", "database is unavailable")
+		writeProblem(w, http.StatusServiceUnavailable, "not_ready", "a required dependency is unavailable")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
@@ -141,6 +142,7 @@ func (a *API) search(w http.ResponseWriter, r *http.Request) {
 		PrincipalID: strings.TrimSpace(r.Header.Get("X-Principal-ID")),
 		Query:       request.Query,
 		TopK:        request.TopK,
+		Mode:        request.Mode,
 	})
 	if err != nil {
 		if errors.Is(err, retrieval.ErrInvalidInput) {

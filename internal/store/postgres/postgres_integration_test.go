@@ -199,6 +199,10 @@ func TestPostgresConcurrentIdempotentSave(t *testing.T) {
 	}
 	chunks := []model.ChunkDraft{{
 		Ordinal: 0, RawText: "concurrencysafe body", IndexedText: "concurrencysafe body", TokenCount: 2,
+		Embedding: &model.EmbeddingDraft{
+			Profile: integrationEmbeddingProfile("concurrent-" + tenantID),
+			Values:  integrationAxisVector(0),
+		},
 	}}
 
 	const workers = 8
@@ -275,6 +279,206 @@ func TestPostgresConcurrentIdempotentSave(t *testing.T) {
 	if !versions[2] || !versions[3] || len(versions) != 2 {
 		t.Fatalf("distinct concurrent fingerprints created versions %v, want versions 2 and 3", versions)
 	}
+}
+
+func TestPostgresExactDenseBackfillVersioningAndAuthorization(t *testing.T) {
+	store, tenantA, tenantB := integrationStore(t)
+	ctx := context.Background()
+	profile := integrationEmbeddingProfile("dense-" + tenantA)
+
+	document := model.DocumentInput{
+		TenantID: tenantA, ID: "dense-public-target", Title: "Dense target",
+		SourceURI: "https://example.test/dense-target", Content: "Dense target source v1.",
+		AllowedPrincipals: []string{}, Metadata: []byte(`{"kind":"dense-target"}`),
+	}
+	v1Chunk := plainIntegrationChunk("The first dense target version uses axis one.")
+	v1, err := store.SaveDocumentVersion(ctx, document, "dense-target-v1", []model.ChunkDraft{v1Chunk})
+	if err != nil {
+		t.Fatalf("save dense target v1 without embedding: %v", err)
+	}
+	if v1.Version != 1 || v1.Unchanged {
+		t.Fatalf("unexpected dense v1: %+v", v1)
+	}
+
+	// A Dense run must backfill a corpus previously ingested by FTS without
+	// inventing a new source-document version.
+	backfillChunk := v1Chunk
+	backfillChunk.Embedding = &model.EmbeddingDraft{Profile: profile, Values: integrationAxisVector(0)}
+	backfilled, err := store.SaveDocumentVersion(ctx, document, "dense-target-v1", []model.ChunkDraft{backfillChunk})
+	if err != nil {
+		t.Fatalf("backfill active dense target: %v", err)
+	}
+	if !backfilled.Unchanged || backfilled.Version != 1 || backfilled.ChunkIDs[0] != v1.ChunkIDs[0] {
+		t.Fatalf("dense backfill changed source version: first=%+v backfill=%+v", v1, backfilled)
+	}
+	var backfillCount int
+	if err := store.pool.QueryRow(ctx, `
+SELECT count(*)
+FROM chunk_embeddings
+WHERE tenant_id = $1 AND chunk_id = $2 AND profile_id = $3`,
+		tenantA, v1.ChunkIDs[0], profile.ProfileID,
+	).Scan(&backfillCount); err != nil {
+		t.Fatalf("count backfilled embeddings: %v", err)
+	}
+	if backfillCount != 1 {
+		t.Fatalf("backfilled embedding count = %d, want 1", backfillCount)
+	}
+	repeatedBackfill, err := store.SaveDocumentVersion(ctx, document, "dense-target-v1", []model.ChunkDraft{backfillChunk})
+	if err != nil {
+		t.Fatalf("repeat unchanged dense backfill: %v", err)
+	}
+	if !repeatedBackfill.Unchanged || repeatedBackfill.Version != 1 {
+		t.Fatalf("repeat dense backfill was not idempotent: %+v", repeatedBackfill)
+	}
+	if _, err := store.pool.Exec(ctx, `
+UPDATE embedding_profiles SET model = model WHERE profile_id = $1`, profile.ProfileID); err == nil || !strings.Contains(err.Error(), "embedding profiles are immutable") {
+		t.Fatalf("direct embedding profile update error = %v, want immutable trigger rejection", err)
+	}
+	if _, err := store.pool.Exec(ctx, `
+UPDATE chunk_embeddings SET input_sha256 = input_sha256
+WHERE tenant_id = $1 AND chunk_id = $2 AND profile_id = $3`, tenantA, v1.ChunkIDs[0], profile.ProfileID); err == nil || !strings.Contains(err.Error(), "chunk embeddings are immutable") {
+		t.Fatalf("direct chunk embedding update error = %v, want immutable trigger rejection", err)
+	}
+
+	// A new source version writes its complete vector set in the same database
+	// transaction and only then advances current_version.
+	document.Content = "Dense target source v2."
+	v2Chunk := plainIntegrationChunk("The current dense target version uses axis two.")
+	v2Chunk.Embedding = &model.EmbeddingDraft{Profile: profile, Values: integrationAxisVector(1)}
+	v2, err := store.SaveDocumentVersion(ctx, document, "dense-target-v2", []model.ChunkDraft{v2Chunk})
+	if err != nil {
+		t.Fatalf("save dense target v2: %v", err)
+	}
+	if v2.Version != 2 || v2.Unchanged {
+		t.Fatalf("unexpected dense v2: %+v", v2)
+	}
+	oldAxisResult, err := store.SearchDense(ctx, model.SearchRequest{TenantID: tenantA, TopK: 1}, profile, integrationAxisVector(0))
+	if err != nil {
+		t.Fatalf("search old dense axis: %v", err)
+	}
+	if len(oldAxisResult.Hits) != 1 || oldAxisResult.Hits[0].ChunkID != v2.ChunkIDs[0] || oldAxisResult.Hits[0].DocumentVersion != 2 {
+		t.Fatalf("old dense version was not filtered by active pointer: %+v", oldAxisResult.Hits)
+	}
+	if oldAxisResult.Hits[0].Content != v2Chunk.RawText || len(oldAxisResult.Hits[0].StageScores) != 1 || oldAxisResult.Hits[0].StageScores[0].Stage != "dense" {
+		t.Fatalf("dense hit lacks raw citation or stage evidence: %+v", oldAxisResult.Hits[0])
+	}
+
+	// A changed configuration under the same profile ID is rejected after the
+	// transaction begins. The attempted document v3 must roll back completely.
+	driftedProfile := profile
+	driftedProfile.Model = "different-model-under-same-profile"
+	driftedChunk := plainIntegrationChunk("This transaction must roll back.")
+	driftedChunk.Embedding = &model.EmbeddingDraft{Profile: driftedProfile, Values: integrationAxisVector(2)}
+	document.Content = "Dense target source v3 that must not activate."
+	if _, err := store.SaveDocumentVersion(ctx, document, "dense-target-v3", []model.ChunkDraft{driftedChunk}); err == nil {
+		t.Fatal("profile drift unexpectedly succeeded")
+	}
+	var currentVersion, versionCount int
+	if err := store.pool.QueryRow(ctx, `
+SELECT d.current_version,
+       (SELECT count(*) FROM document_versions v WHERE v.tenant_id = d.tenant_id AND v.document_id = d.document_id)
+FROM documents d
+WHERE d.tenant_id = $1 AND d.document_id = $2`, tenantA, document.ID).Scan(&currentVersion, &versionCount); err != nil {
+		t.Fatalf("inspect rollback state: %v", err)
+	}
+	if currentVersion != 2 || versionCount != 2 {
+		t.Fatalf("failed embedding transaction changed versions: current=%d count=%d", currentVersion, versionCount)
+	}
+
+	// Insert more-nearby vectors that the caller cannot see. Exact dense search
+	// must still return the farther authorized result rather than underfilling.
+	for index := range 6 {
+		privateDocument := model.DocumentInput{
+			TenantID: tenantA, ID: fmt.Sprintf("dense-private-%d", index), Title: "Private dense decoy",
+			SourceURI: fmt.Sprintf("https://example.test/private/%d", index), Content: "Private dense source.",
+			AllowedPrincipals: []string{"alice"}, Metadata: []byte(`{}`),
+		}
+		chunk := plainIntegrationChunk(fmt.Sprintf("Private exact-axis decoy %d.", index))
+		chunk.Embedding = &model.EmbeddingDraft{Profile: profile, Values: integrationAxisVector(0)}
+		if _, err := store.SaveDocumentVersion(ctx, privateDocument, fmt.Sprintf("dense-private-%d", index), []model.ChunkDraft{chunk}); err != nil {
+			t.Fatalf("save private dense decoy %d: %v", index, err)
+		}
+	}
+	otherTenantDocument := model.DocumentInput{
+		TenantID: tenantB, ID: "dense-other-tenant", Title: "Other tenant dense decoy",
+		SourceURI: "https://example.test/other-dense", Content: "Other tenant dense source.",
+		AllowedPrincipals: []string{}, Metadata: []byte(`{}`),
+	}
+	otherChunk := plainIntegrationChunk("Other tenant exact-axis decoy.")
+	otherChunk.Embedding = &model.EmbeddingDraft{Profile: profile, Values: integrationAxisVector(0)}
+	otherResult, err := store.SaveDocumentVersion(ctx, otherTenantDocument, "dense-other-tenant", []model.ChunkDraft{otherChunk})
+	if err != nil {
+		t.Fatalf("save other tenant dense decoy: %v", err)
+	}
+
+	denied, err := store.SearchDense(ctx, model.SearchRequest{TenantID: tenantA, PrincipalID: "bob", TopK: 1}, profile, integrationAxisVector(0))
+	if err != nil {
+		t.Fatalf("dense search as denied principal: %v", err)
+	}
+	if len(denied.Hits) != 1 || denied.Hits[0].ChunkID != v2.ChunkIDs[0] {
+		t.Fatalf("unauthorized closer vectors displaced authorized result: %+v", denied.Hits)
+	}
+	allowed, err := store.SearchDense(ctx, model.SearchRequest{TenantID: tenantA, PrincipalID: "alice", TopK: 1}, profile, integrationAxisVector(0))
+	if err != nil {
+		t.Fatalf("dense search as allowed principal: %v", err)
+	}
+	if len(allowed.Hits) != 1 || !strings.HasPrefix(allowed.Hits[0].DocumentID, "dense-private-") {
+		t.Fatalf("allowed principal did not receive nearer private result: %+v", allowed.Hits)
+	}
+	otherTenant, err := store.SearchDense(ctx, model.SearchRequest{TenantID: tenantB, TopK: 1}, profile, integrationAxisVector(0))
+	if err != nil {
+		t.Fatalf("dense search other tenant: %v", err)
+	}
+	if len(otherTenant.Hits) != 1 || otherTenant.Hits[0].ChunkID != otherResult.ChunkIDs[0] {
+		t.Fatalf("tenant isolation returned wrong result: %+v", otherTenant.Hits)
+	}
+
+	missingProfile := profile
+	missingProfile.ProfileID += "-missing"
+	missing, err := store.SearchDense(ctx, model.SearchRequest{TenantID: tenantA, TopK: 5}, missingProfile, integrationAxisVector(0))
+	if err != nil {
+		t.Fatalf("search missing profile: %v", err)
+	}
+	if len(missing.Hits) != 0 {
+		t.Fatalf("missing profile returned hits: %+v", missing.Hits)
+	}
+
+	inventory, err := store.ActiveChunkInventory(ctx, []string{tenantA, tenantA})
+	if err != nil {
+		t.Fatalf("load active tenant inventory: %v", err)
+	}
+	if len(inventory) != 7 {
+		t.Fatalf("active tenant inventory length = %d, want 7", len(inventory))
+	}
+	var foundCurrentTarget bool
+	for _, entry := range inventory {
+		if entry.TenantID != tenantA || len(entry.RawTextSHA256) != 64 || len(entry.IndexedTextSHA256) != 64 {
+			t.Fatalf("invalid active inventory entry: %+v", entry)
+		}
+		if entry.DocumentID == document.ID {
+			foundCurrentTarget = entry.DocumentVersion == 2 && entry.ChunkID == v2.ChunkIDs[0]
+		}
+	}
+	if !foundCurrentTarget {
+		t.Fatalf("active inventory did not retain only target v2: %+v", inventory)
+	}
+}
+
+func plainIntegrationChunk(text string) model.ChunkDraft {
+	return model.ChunkDraft{Ordinal: 0, RawText: text, IndexedText: text, TokenCount: len(strings.Fields(text))}
+}
+
+func integrationEmbeddingProfile(profileID string) model.EmbeddingProfile {
+	return model.EmbeddingProfile{
+		ProfileID: profileID, Provider: "integration", Model: "integration-model", Dimensions: 1024,
+		DocumentRecipe: "indexed_text/v1", QueryRecipe: "raw_query/v1",
+	}
+}
+
+func integrationAxisVector(axis int) []float32 {
+	vector := make([]float32, 1024)
+	vector[axis] = 1
+	return vector
 }
 
 func integrationStore(t *testing.T) (*Store, string, string) {

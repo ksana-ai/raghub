@@ -26,6 +26,42 @@ type ChunkDraft struct {
 	RawText     string
 	IndexedText string
 	TokenCount  int
+	Embedding   *EmbeddingDraft
+}
+
+// EmbeddingDraft is derived retrieval data for a chunk. It is intentionally
+// excluded from the document fingerprint: changing an embedding model must not
+// create a new source-document version, and the store can attach another model
+// to the same immutable chunk.
+type EmbeddingDraft struct {
+	Profile EmbeddingProfile
+	Values  []float32
+}
+
+// EmbeddingProfile is the immutable identity of an embedding configuration.
+// Model names alone are not revisions, so ProfileID also binds the provider,
+// dimensions, and document/query recipes used to create stored vectors.
+type EmbeddingProfile struct {
+	ProfileID      string
+	Provider       string
+	Model          string
+	Dimensions     int
+	DocumentRecipe string
+	QueryRecipe    string
+}
+
+// ActiveChunkInventoryEntry is a canonical description of one currently
+// searchable source chunk. Evaluation uses the complete tenant inventory to
+// detect database contamination before issuing any query.
+type ActiveChunkInventoryEntry struct {
+	TenantID            string `json:"tenant_id"`
+	DocumentID          string `json:"document_id"`
+	DocumentVersion     int    `json:"document_version"`
+	DocumentFingerprint string `json:"document_fingerprint"`
+	ChunkID             string `json:"chunk_id"`
+	Ordinal             int    `json:"ordinal"`
+	RawTextSHA256       string `json:"raw_text_sha256"`
+	IndexedTextSHA256   string `json:"indexed_text_sha256"`
 }
 
 // IngestResult identifies the immutable version and chunks made active by an
@@ -46,7 +82,17 @@ type SearchRequest struct {
 	PrincipalID string
 	Query       string
 	TopK        int
+	Mode        SearchMode
 }
+
+// SearchMode selects one independently measurable retrieval path. Hybrid
+// fusion is deliberately a later stage so FTS and dense remain valid baselines.
+type SearchMode string
+
+const (
+	SearchModeFTS   SearchMode = "fts"
+	SearchModeDense SearchMode = "dense"
+)
 
 // SearchHit is a ranked chunk plus the information required to cite the exact
 // document version from which it came.

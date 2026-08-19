@@ -1,0 +1,136 @@
+{
+  "schema_version": "raghub.eval.dataset/v1",
+  "name": "raghub-smoke-paired",
+  "version": "2.0.0",
+  "description": "Exact-byte paired FTS/dense smoke corpus with lexical, semantic, multilingual, ACL, and tenant-isolation cases. It is local smoke evidence, not a production benchmark.",
+  "documents": [
+    {
+      "tenant_id": "eval-smoke-v2-acme",
+      "document_id": "v2-acme-telemetry",
+      "title": "Telemetry Error Catalog",
+      "source_uri": "fixture://v2/acme/telemetry",
+      "content": "# Telemetry error ZX-481\n\nError ZX-481 means an event payload was rejected because its device clock was too far from server time. Correct the clock skew before retrying ingestion.",
+      "metadata": {"category": "runbook", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v2-acme",
+      "document_id": "v2-acme-membership",
+      "title": "Membership Renewal",
+      "source_uri": "fixture://v2/acme/membership",
+      "content": "# Ending a paid membership\n\nOpen billing preferences and choose terminate renewal. Benefits remain available through the current paid period, and no charge is made for the following month.",
+      "metadata": {"category": "billing", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v2-acme",
+      "document_id": "v2-acme-snapshots",
+      "title": "Snapshot Retention",
+      "source_uri": "fixture://v2/acme/snapshots",
+      "content": "# Database recovery window\n\nDatabase snapshots are retained for thirty-five days. A recovery request can restore records removed within that window; older snapshots are unavailable.",
+      "metadata": {"category": "recovery", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v2-acme",
+      "document_id": "v2-acme-visitor-umbrellas",
+      "title": "Visitor Rain Supplies",
+      "source_uri": "fixture://v2/acme/visitor-umbrellas",
+      "content": "# Rainy-day visitor supplies\n\nThe reception desk on the ground floor lends blue umbrellas to visitors. Return borrowed umbrellas beside the west entrance before the building closes.",
+      "metadata": {"category": "facilities", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v2-acme",
+      "document_id": "v2-acme-nebula-private",
+      "title": "Nebula Restricted Release Control",
+      "source_uri": "fixture://v2/acme/nebula-private",
+      "content": "# Project Nebula restricted release control\n\nThe emergency production-unlock phrase is CRIMSON-LANTERN. Only the release commander may use it during an approved incident.",
+      "allowed_principals": ["eval-user-alice"],
+      "metadata": {"category": "restricted-runbook", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v2-acme",
+      "document_id": "v2-acme-nebula-public",
+      "title": "Nebula Release Help",
+      "source_uri": "fixture://v2/acme/nebula-public",
+      "content": "# Project Nebula release help\n\nEngineers without restricted release-control access must contact the release commander. They must not attempt an emergency production unlock themselves.",
+      "metadata": {"category": "runbook", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v2-acme",
+      "document_id": "v2-acme-aurora",
+      "title": "Acme Project Aurora Routing",
+      "source_uri": "fixture://v2/acme/aurora",
+      "content": "# Project Aurora routing\n\nFor Acme, the internal routing codename for Project Aurora is Maple, and the owning group is warehouse operations.",
+      "metadata": {"category": "project", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-smoke-v2-globex",
+      "document_id": "v2-globex-aurora",
+      "title": "Globex Project Aurora Routing",
+      "source_uri": "fixture://v2/globex/aurora",
+      "content": "# Project Aurora routing\n\nFor Globex, the internal routing codename for Project Aurora is Topaz, and the owning group is field research.",
+      "metadata": {"category": "project", "language": "en"}
+    }
+  ],
+  "queries": [
+    {
+      "id": "v2-exact-telemetry-code",
+      "category": "exact-lexical",
+      "tenant_id": "eval-smoke-v2-acme",
+      "query": "ZX-481 payload clock skew",
+      "gold_chunk_ids": ["v2-acme-telemetry:v000001:c0000"]
+    },
+    {
+      "id": "v2-semantic-stop-renewal",
+      "category": "semantic-paraphrase",
+      "tenant_id": "eval-smoke-v2-acme",
+      "query": "How can I stop next month's charge but keep my benefits until this period ends?",
+      "gold_chunk_ids": ["v2-acme-membership:v000001:c0000"]
+    },
+    {
+      "id": "v2-semantic-restore-four-weeks",
+      "category": "semantic-paraphrase",
+      "tenant_id": "eval-smoke-v2-acme",
+      "query": "Can we restore records that were deleted four weeks ago?",
+      "gold_chunk_ids": ["v2-acme-snapshots:v000001:c0000"]
+    },
+    {
+      "id": "v2-cross-language-umbrella",
+      "category": "cross-language",
+      "tenant_id": "eval-smoke-v2-acme",
+      "query": "访客下雨时可以在哪里借蓝色雨伞？",
+      "gold_chunk_ids": ["v2-acme-visitor-umbrellas:v000001:c0000"]
+    },
+    {
+      "id": "v2-acl-allowed",
+      "category": "acl",
+      "tenant_id": "eval-smoke-v2-acme",
+      "principal_id": "eval-user-alice",
+      "query": "Project Nebula emergency production unlock phrase CRIMSON-LANTERN",
+      "gold_chunk_ids": ["v2-acme-nebula-private:v000001:c0000"]
+    },
+    {
+      "id": "v2-acl-denied",
+      "category": "acl",
+      "tenant_id": "eval-smoke-v2-acme",
+      "principal_id": "eval-user-bob",
+      "query": "Project Nebula restricted release control emergency production unlock",
+      "gold_chunk_ids": ["v2-acme-nebula-public:v000001:c0000"],
+      "forbidden_chunk_ids": ["v2-acme-nebula-private:v000001:c0000"]
+    },
+    {
+      "id": "v2-tenant-acme",
+      "category": "tenant-boundary",
+      "tenant_id": "eval-smoke-v2-acme",
+      "query": "Project Aurora internal routing codename",
+      "gold_chunk_ids": ["v2-acme-aurora:v000001:c0000"],
+      "forbidden_chunk_ids": ["v2-globex-aurora:v000001:c0000"]
+    },
+    {
+      "id": "v2-tenant-globex",
+      "category": "tenant-boundary",
+      "tenant_id": "eval-smoke-v2-globex",
+      "query": "Project Aurora internal routing codename",
+      "gold_chunk_ids": ["v2-globex-aurora:v000001:c0000"],
+      "forbidden_chunk_ids": ["v2-acme-aurora:v000001:c0000"]
+    }
+  ]
+}

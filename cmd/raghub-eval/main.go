@@ -12,14 +12,16 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	embeddingopenai "raghub/internal/embedding/openai"
 	evalrun "raghub/internal/eval"
 	"raghub/internal/ingest"
+	"raghub/internal/model"
 	"raghub/internal/retrieval"
 	postgresstore "raghub/internal/store/postgres"
 )
 
 const (
-	defaultDataset      = "datasets/smoke/v1.json"
+	defaultDataset      = "datasets/smoke/v2.json"
 	defaultChunkRunes   = 1200
 	defaultOverlapRunes = 120
 )
@@ -36,6 +38,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	datasetPath := flags.String("dataset", defaultDataset, "path to a versioned JSON evaluation dataset")
 	outputPath := flags.String("output", "-", "manifest output path, or - for stdout")
 	topK := flags.Int("top-k", 5, "number of ranked chunks to evaluate")
+	modeFlag := flags.String("mode", string(model.SearchModeFTS), "retrieval mode: fts or dense")
 	migrate := flags.Bool("migrate", false, "apply database migrations before evaluation")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -47,6 +50,27 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	if *topK < 1 || *topK > 50 {
 		fmt.Fprintln(stderr, "raghub-eval: -top-k must be between 1 and 50")
 		return 2
+	}
+	searchMode, err := parseSearchMode(*modeFlag)
+	if err != nil {
+		fmt.Fprintf(stderr, "raghub-eval: %v\n", err)
+		return 2
+	}
+	var (
+		denseConfig denseSettings
+		denseClient *embeddingopenai.Client
+	)
+	if searchMode == model.SearchModeDense {
+		denseConfig, err = loadDenseSettings(getenv)
+		if err != nil {
+			fmt.Fprintf(stderr, "raghub-eval: %v\n", err)
+			return 2
+		}
+		denseClient, err = embeddingopenai.NewClient(denseConfig.clientConfig())
+		if err != nil {
+			fmt.Fprintf(stderr, "raghub-eval: configure embedding client: %v\n", err)
+			return 2
+		}
 	}
 
 	databaseURL := strings.TrimSpace(getenv("RAGHUB_DATABASE_URL"))
@@ -83,28 +107,54 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		return 1
 	}
 	store := postgresstore.New(pool)
-	ingestor := ingest.NewService(store, chunker)
-	searcher := retrieval.NewService(store)
-
-	databaseVersion := ""
-	if err := pool.QueryRow(ctx, "SHOW server_version").Scan(&databaseVersion); err != nil {
-		fmt.Fprintf(stderr, "raghub-eval: read PostgreSQL version: %v\n", err)
-		return 1
-	}
-	manifest, runErr := evalrun.NewRunner(ingestor, searcher).Run(ctx, loaded, evalrun.Options{
-		TopK:          *topK,
-		RetrieverName: "postgres_fts",
-		RetrieverConfig: map[string]any{
+	var (
+		ingestor        evalrun.Ingestor
+		searcher        evalrun.Searcher
+		retrieverName   string
+		retrieverConfig map[string]any
+	)
+	if searchMode == model.SearchModeDense {
+		ingestor = ingest.NewServiceWithEmbedder(store, chunker, denseClient)
+		searcher = retrieval.NewServiceWithDense(store, store, denseClient)
+		retrieverName = "postgres_dense"
+		retrieverConfig = denseConfig.manifestConfig()
+	} else {
+		ingestor = ingest.NewService(store, chunker)
+		searcher = retrieval.NewService(store)
+		retrieverName = "postgres_fts"
+		retrieverConfig = map[string]any{
 			"backend":             "postgresql",
 			"fts_config":          "simple",
 			"query_parser":        "plainto_tsquery",
 			"chunker":             "markdown",
 			"chunk_max_runes":     defaultChunkRunes,
 			"chunk_overlap_runes": defaultOverlapRunes,
-		},
-		DatabaseVersion: databaseVersion,
-		CodeRevision:    codeRevision(),
-		Command:         command,
+		}
+	}
+
+	databaseVersion := ""
+	if err := pool.QueryRow(ctx, "SHOW server_version").Scan(&databaseVersion); err != nil {
+		fmt.Fprintf(stderr, "raghub-eval: read PostgreSQL version: %v\n", err)
+		return 1
+	}
+	vectorExtensionVersion := ""
+	if err := pool.QueryRow(ctx, `
+SELECT COALESCE(
+    (SELECT extversion FROM pg_extension WHERE extname = 'vector'),
+    ''
+)`).Scan(&vectorExtensionVersion); err != nil {
+		fmt.Fprintf(stderr, "raghub-eval: read pgvector extension version: %v\n", err)
+		return 1
+	}
+	manifest, runErr := evalrun.NewRunner(ingestor, searcher, store).Run(ctx, loaded, evalrun.Options{
+		TopK:                   *topK,
+		SearchMode:             searchMode,
+		RetrieverName:          retrieverName,
+		RetrieverConfig:        retrieverConfig,
+		DatabaseVersion:        databaseVersion,
+		VectorExtensionVersion: vectorExtensionVersion,
+		CodeRevision:           codeRevision(),
+		Command:                command,
 	})
 	data, marshalErr := evalrun.MarshalManifest(manifest)
 	if marshalErr != nil {
@@ -120,6 +170,14 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		return 1
 	}
 	return 0
+}
+
+func parseSearchMode(value string) (model.SearchMode, error) {
+	mode := model.SearchMode(strings.TrimSpace(value))
+	if mode != model.SearchModeFTS && mode != model.SearchModeDense {
+		return "", fmt.Errorf("-mode must be %q or %q", model.SearchModeFTS, model.SearchModeDense)
+	}
+	return mode, nil
 }
 
 func writeOutput(path string, data []byte, stdout io.Writer) (err error) {

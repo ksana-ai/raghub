@@ -81,7 +81,7 @@ func TestSearchPassesPrincipalAndReturnsTrace(t *testing.T) {
 		Traces: []model.StageTrace{{Stage: "fts", DurationMS: 1.2}},
 	}}
 	handler := newTestHandler(&fakeIngestor{}, searcher, fakeReadiness{})
-	request := httptest.NewRequest(http.MethodPost, "/v1/search", strings.NewReader(`{"query":"deployment","top_k":3}`))
+	request := httptest.NewRequest(http.MethodPost, "/v1/search", strings.NewReader(`{"query":"deployment","top_k":3,"mode":"dense"}`))
 	request.Header.Set("X-Tenant-ID", "tenant-a")
 	request.Header.Set("X-Principal-ID", "user:alice")
 	response := httptest.NewRecorder()
@@ -93,6 +93,9 @@ func TestSearchPassesPrincipalAndReturnsTrace(t *testing.T) {
 	}
 	if searcher.received.PrincipalID != "user:alice" || searcher.received.TopK != 3 {
 		t.Fatalf("unexpected search request: %+v", searcher.received)
+	}
+	if searcher.received.Mode != model.SearchModeDense {
+		t.Fatalf("search mode = %q, want dense", searcher.received.Mode)
 	}
 	var body model.SearchResult
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"slices"
 	"strings"
@@ -35,13 +36,25 @@ type Chunker interface {
 	Chunk(content string) ([]model.ChunkDraft, error)
 }
 
+// Embedder converts the exact indexed_text values into one immutable embedding
+// profile. Network calls happen before the store opens its transaction.
+type Embedder interface {
+	Profile() model.EmbeddingProfile
+	Embed(ctx context.Context, inputs []string) ([][]float32, error)
+}
+
 type Service struct {
-	store   Store
-	chunker Chunker
+	store    Store
+	chunker  Chunker
+	embedder Embedder
 }
 
 func NewService(store Store, chunker Chunker) *Service {
 	return &Service{store: store, chunker: chunker}
+}
+
+func NewServiceWithEmbedder(store Store, chunker Chunker, embedder Embedder) *Service {
+	return &Service{store: store, chunker: chunker, embedder: embedder}
 }
 
 func (s *Service) Ingest(ctx context.Context, document model.DocumentInput) (model.IngestResult, error) {
@@ -57,8 +70,73 @@ func (s *Service) Ingest(ctx context.Context, document model.DocumentInput) (mod
 	if len(chunks) == 0 {
 		return model.IngestResult{}, fmt.Errorf("%w: document produced no chunks", ErrInvalidInput)
 	}
+	if s.embedder != nil {
+		if err := embedChunks(ctx, s.embedder, chunks); err != nil {
+			return model.IngestResult{}, err
+		}
+	}
 
 	return s.store.SaveDocumentVersion(ctx, document, fingerprint(document, chunks), chunks)
+}
+
+func embedChunks(ctx context.Context, embedder Embedder, chunks []model.ChunkDraft) error {
+	profile := embedder.Profile()
+	if err := validateEmbeddingProfile(profile); err != nil {
+		return fmt.Errorf("embed chunks: invalid profile: %w", err)
+	}
+	inputs := make([]string, len(chunks))
+	for index := range chunks {
+		inputs[index] = chunks[index].IndexedText
+	}
+	vectors, err := embedder.Embed(ctx, inputs)
+	if err != nil {
+		return fmt.Errorf("embed chunks with profile %q: %w", profile.ProfileID, err)
+	}
+	if len(vectors) != len(chunks) {
+		return fmt.Errorf("embed chunks with profile %q: received %d vectors for %d chunks", profile.ProfileID, len(vectors), len(chunks))
+	}
+	for index, vector := range vectors {
+		if len(vector) != profile.Dimensions {
+			return fmt.Errorf("embed chunk %d with profile %q: received %d dimensions, want %d", index, profile.ProfileID, len(vector), profile.Dimensions)
+		}
+		var normSquared float64
+		for dimension, value := range vector {
+			if math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) {
+				return fmt.Errorf("embed chunk %d with profile %q: dimension %d is not finite", index, profile.ProfileID, dimension)
+			}
+			normSquared += float64(value) * float64(value)
+		}
+		if normSquared == 0 {
+			return fmt.Errorf("embed chunk %d with profile %q: cosine vector must not be zero", index, profile.ProfileID)
+		}
+		chunks[index].Embedding = &model.EmbeddingDraft{
+			Profile: profile,
+			Values:  append([]float32(nil), vector...),
+		}
+	}
+	return nil
+}
+
+func validateEmbeddingProfile(profile model.EmbeddingProfile) error {
+	if !identifierPattern.MatchString(strings.TrimSpace(profile.ProfileID)) {
+		return errors.New("profile ID must be a 1-128 character safe identifier")
+	}
+	if strings.TrimSpace(profile.Provider) == "" || len(profile.Provider) > 128 {
+		return errors.New("provider must be between 1 and 128 bytes")
+	}
+	if strings.TrimSpace(profile.Model) == "" || len(profile.Model) > 256 {
+		return errors.New("model must be between 1 and 256 bytes")
+	}
+	if profile.Dimensions <= 0 {
+		return errors.New("dimensions must be positive")
+	}
+	if strings.TrimSpace(profile.DocumentRecipe) == "" || len(profile.DocumentRecipe) > 256 {
+		return errors.New("document recipe must be between 1 and 256 bytes")
+	}
+	if strings.TrimSpace(profile.QueryRecipe) == "" || len(profile.QueryRecipe) > 256 {
+		return errors.New("query recipe must be between 1 and 256 bytes")
+	}
+	return nil
 }
 
 func normalizeAndValidate(document model.DocumentInput) (model.DocumentInput, error) {

@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	ReportSchemaVersion = "raghub.eval.report/v1"
+	ReportSchemaVersion = "raghub.eval.report/v2"
 	SmokeStatus         = "smoke"
 	IncompleteStatus    = "incomplete"
 )
@@ -29,14 +29,20 @@ type Searcher interface {
 	Search(ctx context.Context, request model.SearchRequest) (model.SearchResult, error)
 }
 
+type CorpusInspector interface {
+	ActiveChunkInventory(ctx context.Context, tenantIDs []string) ([]model.ActiveChunkInventoryEntry, error)
+}
+
 type Options struct {
-	TopK            int
-	RetrieverName   string
-	RetrieverConfig map[string]any
-	DatabaseVersion string
-	CodeRevision    string
-	Command         string
-	Clock           func() time.Time
+	TopK                   int
+	SearchMode             model.SearchMode
+	RetrieverName          string
+	RetrieverConfig        map[string]any
+	DatabaseVersion        string
+	VectorExtensionVersion string
+	CodeRevision           string
+	Command                string
+	Clock                  func() time.Time
 }
 
 type Manifest struct {
@@ -70,9 +76,10 @@ type RetrieverManifest struct {
 }
 
 type RuntimeManifest struct {
-	GoVersion       string `json:"go_version"`
-	DatabaseVersion string `json:"database_version,omitempty"`
-	CodeRevision    string `json:"code_revision,omitempty"`
+	GoVersion              string `json:"go_version"`
+	DatabaseVersion        string `json:"database_version,omitempty"`
+	VectorExtensionVersion string `json:"vector_extension_version,omitempty"`
+	CodeRevision           string `json:"code_revision,omitempty"`
 }
 
 type IngestionRecord struct {
@@ -115,21 +122,23 @@ type Summary struct {
 }
 
 // GateSummary separates deterministic correctness and security gates from
-// retrieval-quality averages. Pass is true only when all three gates pass.
+// retrieval-quality averages. Pass is true only when all four gates pass.
 type GateSummary struct {
 	Pass                  bool `json:"pass"`
 	CorpusReferencesValid bool `json:"corpus_references_valid"`
+	CorpusIsolated        bool `json:"corpus_isolated"`
 	SearchCompleted       bool `json:"search_completed"`
 	NoForbiddenHits       bool `json:"no_forbidden_hits"`
 }
 
 type Runner struct {
-	ingestor Ingestor
-	searcher Searcher
+	ingestor        Ingestor
+	searcher        Searcher
+	corpusInspector CorpusInspector
 }
 
-func NewRunner(ingestor Ingestor, searcher Searcher) *Runner {
-	return &Runner{ingestor: ingestor, searcher: searcher}
+func NewRunner(ingestor Ingestor, searcher Searcher, corpusInspector CorpusInspector) *Runner {
+	return &Runner{ingestor: ingestor, searcher: searcher, corpusInspector: corpusInspector}
 }
 
 func (r *Runner) Run(ctx context.Context, loaded LoadedDataset, options Options) (Manifest, error) {
@@ -138,11 +147,14 @@ func (r *Runner) Run(ctx context.Context, loaded LoadedDataset, options Options)
 		clock = time.Now
 	}
 	manifest := newManifest(loaded, options, clock())
-	if r == nil || r.ingestor == nil || r.searcher == nil {
-		return finishIncomplete(manifest, clock, errors.New("eval runner requires ingestor and searcher"))
+	if r == nil || r.ingestor == nil || r.searcher == nil || r.corpusInspector == nil {
+		return finishIncomplete(manifest, clock, errors.New("eval runner requires ingestor, searcher, and corpus inspector"))
 	}
 	if options.TopK <= 0 {
 		return finishIncomplete(manifest, clock, errors.New("eval top_k must be positive"))
+	}
+	if options.SearchMode != model.SearchModeFTS && options.SearchMode != model.SearchModeDense {
+		return finishIncomplete(manifest, clock, fmt.Errorf("eval search mode must be %q or %q", model.SearchModeFTS, model.SearchModeDense))
 	}
 	if strings.TrimSpace(options.RetrieverName) == "" {
 		return finishIncomplete(manifest, clock, errors.New("eval retriever name is required"))
@@ -158,6 +170,7 @@ func (r *Runner) Run(ctx context.Context, loaded LoadedDataset, options Options)
 	manifest.Retriever.ConfigSHA256 = configSHA256
 
 	activeChunks := make(map[string]activeChunkOwner)
+	expectedInventory := make(map[string]activeChunkOwner)
 	for _, document := range loaded.Dataset.Documents {
 		record := IngestionRecord{TenantID: document.TenantID, DocumentID: document.DocumentID}
 		result, err := r.ingestor.Ingest(ctx, document.documentInput())
@@ -192,13 +205,29 @@ func (r *Runner) Run(ctx context.Context, loaded LoadedDataset, options Options)
 					chunkID, owner.TenantID, owner.DocumentID, document.TenantID, document.DocumentID,
 				))
 			}
-			activeChunks[chunkID] = activeChunkOwner{TenantID: document.TenantID, DocumentID: document.DocumentID}
+			owner := activeChunkOwner{TenantID: document.TenantID, DocumentID: document.DocumentID, DocumentVersion: result.Version}
+			activeChunks[chunkID] = owner
+			expectedInventory[tenantChunkKey(document.TenantID, chunkID)] = owner
 		}
 	}
 	if err := validateActiveChunkReferences(loaded.Dataset.Queries, activeChunks); err != nil {
 		return finishIncomplete(manifest, clock, err)
 	}
 	manifest.Summary.Gates.CorpusReferencesValid = true
+	tenantIDs := datasetTenantIDs(loaded.Dataset)
+	inventory, err := r.corpusInspector.ActiveChunkInventory(ctx, tenantIDs)
+	if err != nil {
+		return finishIncomplete(manifest, clock, fmt.Errorf("inspect active corpus: %w", err))
+	}
+	if err := validateCorpusIsolation(expectedInventory, inventory); err != nil {
+		return finishIncomplete(manifest, clock, err)
+	}
+	corpusSHA256, err := activeCorpusSHA256(inventory)
+	if err != nil {
+		return finishIncomplete(manifest, clock, fmt.Errorf("hash active corpus inventory: %w", err))
+	}
+	manifest.CorpusSHA256 = corpusSHA256
+	manifest.Summary.Gates.CorpusIsolated = true
 
 	queryMetrics := make([]RankingMetrics, 0, len(loaded.Dataset.Queries))
 	latencies := make([]float64, 0, len(loaded.Dataset.Queries))
@@ -209,6 +238,7 @@ func (r *Runner) Run(ctx context.Context, loaded LoadedDataset, options Options)
 			PrincipalID: query.PrincipalID,
 			Query:       query.Query,
 			TopK:        options.TopK,
+			Mode:        options.SearchMode,
 		})
 		latencyMS := max(0, clock().Sub(started).Seconds()*1000)
 		latencies = append(latencies, latencyMS)
@@ -258,7 +288,29 @@ func (r *Runner) Run(ctx context.Context, loaded LoadedDataset, options Options)
 	manifest.Summary.Gates.SearchCompleted = manifest.Summary.SearchErrorCount == 0
 	manifest.Summary.Gates.NoForbiddenHits = manifest.Summary.ForbiddenHitCount == 0
 	manifest.Summary.Gates.Pass = manifest.Summary.Gates.CorpusReferencesValid &&
-		manifest.Summary.Gates.SearchCompleted && manifest.Summary.Gates.NoForbiddenHits
+		manifest.Summary.Gates.CorpusIsolated && manifest.Summary.Gates.SearchCompleted && manifest.Summary.Gates.NoForbiddenHits
+	postInventory, err := r.corpusInspector.ActiveChunkInventory(ctx, tenantIDs)
+	if err != nil {
+		manifest.Summary.Gates.CorpusIsolated = false
+		manifest.Summary.Gates.Pass = false
+		return finishIncomplete(manifest, clock, fmt.Errorf("reinspect active corpus after search: %w", err))
+	}
+	if err := validateCorpusIsolation(expectedInventory, postInventory); err != nil {
+		manifest.Summary.Gates.CorpusIsolated = false
+		manifest.Summary.Gates.Pass = false
+		return finishIncomplete(manifest, clock, fmt.Errorf("active corpus changed during evaluation: %w", err))
+	}
+	postCorpusSHA256, err := activeCorpusSHA256(postInventory)
+	if err != nil {
+		manifest.Summary.Gates.CorpusIsolated = false
+		manifest.Summary.Gates.Pass = false
+		return finishIncomplete(manifest, clock, fmt.Errorf("hash post-search active corpus inventory: %w", err))
+	}
+	if postCorpusSHA256 != corpusSHA256 {
+		manifest.Summary.Gates.CorpusIsolated = false
+		manifest.Summary.Gates.Pass = false
+		return finishIncomplete(manifest, clock, errors.New("active corpus changed during evaluation: inventory hash differs"))
+	}
 	manifest.FinishedAt = clock().UTC()
 	if manifest.Summary.SearchErrorCount > 0 {
 		err := fmt.Errorf("evaluation incomplete: %d of %d searches failed", manifest.Summary.SearchErrorCount, manifest.Summary.QueryCount)
@@ -280,9 +332,9 @@ func newManifest(loaded LoadedDataset, options Options, started time.Time) Manif
 		RunID:         evaluationRunID(started, loaded.SHA256),
 		Status:        SmokeStatus,
 		Command:       options.Command,
-		// The v1 dataset is self-contained, so its exact-byte digest identifies
-		// both the query specification and the corpus snapshot.
-		CorpusSHA256: loaded.SHA256,
+		// CorpusSHA256 is populated only after the complete tenant inventory is
+		// proven isolated from extra or missing active chunks.
+		CorpusSHA256: "",
 		Dataset: DatasetManifest{
 			Name:    loaded.Dataset.Name,
 			Version: loaded.Dataset.Version,
@@ -292,9 +344,10 @@ func newManifest(loaded LoadedDataset, options Options, started time.Time) Manif
 		// invalid caller value therefore still yields a serializable manifest.
 		Retriever: RetrieverManifest{Name: options.RetrieverName, Config: map[string]any{}},
 		Runtime: RuntimeManifest{
-			GoVersion:       runtime.Version(),
-			DatabaseVersion: options.DatabaseVersion,
-			CodeRevision:    options.CodeRevision,
+			GoVersion:              runtime.Version(),
+			DatabaseVersion:        options.DatabaseVersion,
+			VectorExtensionVersion: options.VectorExtensionVersion,
+			CodeRevision:           options.CodeRevision,
 		},
 		StartedAt:  started.UTC(),
 		TopK:       options.TopK,
@@ -322,8 +375,9 @@ func finishIncomplete(manifest Manifest, clock func() time.Time, err error) (Man
 }
 
 type activeChunkOwner struct {
-	TenantID   string
-	DocumentID string
+	TenantID        string
+	DocumentID      string
+	DocumentVersion int
 }
 
 func validateActiveChunkReferences(queries []QueryCase, activeChunks map[string]activeChunkOwner) error {
@@ -351,6 +405,117 @@ func validateActiveChunkReferences(queries []QueryCase, activeChunks map[string]
 	}
 	slices.Sort(missing)
 	return fmt.Errorf("dataset references chunks outside this run's active corpus: %s", strings.Join(missing, "; "))
+}
+
+func datasetTenantIDs(dataset Dataset) []string {
+	tenants := make(map[string]struct{}, len(dataset.Documents))
+	for _, document := range dataset.Documents {
+		tenants[document.TenantID] = struct{}{}
+	}
+	for _, query := range dataset.Queries {
+		tenants[query.TenantID] = struct{}{}
+	}
+	result := make([]string, 0, len(tenants))
+	for tenantID := range tenants {
+		result = append(result, tenantID)
+	}
+	slices.Sort(result)
+	return result
+}
+
+func tenantChunkKey(tenantID, chunkID string) string {
+	return tenantID + "\x00" + chunkID
+}
+
+func validateCorpusIsolation(expected map[string]activeChunkOwner, inventory []model.ActiveChunkInventoryEntry) error {
+	remaining := make(map[string]activeChunkOwner, len(expected))
+	for key, owner := range expected {
+		remaining[key] = owner
+	}
+	seen := make(map[string]struct{}, len(inventory))
+	var issues []string
+	for _, entry := range inventory {
+		key := tenantChunkKey(entry.TenantID, entry.ChunkID)
+		if _, duplicate := seen[key]; duplicate {
+			issues = append(issues, fmt.Sprintf("duplicate inventory tenant=%s chunk=%s", entry.TenantID, entry.ChunkID))
+			continue
+		}
+		seen[key] = struct{}{}
+		owner, exists := expected[key]
+		if !exists {
+			issues = append(issues, fmt.Sprintf(
+				"extra active chunk tenant=%s document=%s version=%d chunk=%s",
+				entry.TenantID, entry.DocumentID, entry.DocumentVersion, entry.ChunkID,
+			))
+			continue
+		}
+		delete(remaining, key)
+		if entry.DocumentID != owner.DocumentID || entry.DocumentVersion != owner.DocumentVersion {
+			issues = append(issues, fmt.Sprintf(
+				"owner/version mismatch tenant=%s chunk=%s expected=%s/v%d actual=%s/v%d",
+				entry.TenantID, entry.ChunkID, owner.DocumentID, owner.DocumentVersion, entry.DocumentID, entry.DocumentVersion,
+			))
+		}
+		if entry.Ordinal < 0 || strings.TrimSpace(entry.DocumentFingerprint) == "" ||
+			strings.TrimSpace(entry.RawTextSHA256) == "" || strings.TrimSpace(entry.IndexedTextSHA256) == "" {
+			issues = append(issues, fmt.Sprintf("incomplete inventory metadata tenant=%s chunk=%s", entry.TenantID, entry.ChunkID))
+		}
+	}
+	for key, owner := range remaining {
+		separator := strings.IndexByte(key, 0)
+		tenantID, chunkID := key, ""
+		if separator >= 0 {
+			tenantID, chunkID = key[:separator], key[separator+1:]
+		}
+		issues = append(issues, fmt.Sprintf(
+			"missing active chunk tenant=%s document=%s version=%d chunk=%s",
+			tenantID, owner.DocumentID, owner.DocumentVersion, chunkID,
+		))
+	}
+	if len(issues) == 0 {
+		return nil
+	}
+	slices.Sort(issues)
+	return fmt.Errorf("active corpus is not isolated: %s", strings.Join(issues, "; "))
+}
+
+func activeCorpusSHA256(inventory []model.ActiveChunkInventoryEntry) (string, error) {
+	canonical := append([]model.ActiveChunkInventoryEntry(nil), inventory...)
+	slices.SortFunc(canonical, compareInventoryEntries)
+	data, err := json.Marshal(canonical)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:]), nil
+}
+
+func compareInventoryEntries(first, second model.ActiveChunkInventoryEntry) int {
+	for _, values := range [][2]string{
+		{first.TenantID, second.TenantID},
+		{first.DocumentID, second.DocumentID},
+		{first.ChunkID, second.ChunkID},
+		{first.DocumentFingerprint, second.DocumentFingerprint},
+		{first.RawTextSHA256, second.RawTextSHA256},
+		{first.IndexedTextSHA256, second.IndexedTextSHA256},
+	} {
+		if result := strings.Compare(values[0], values[1]); result != 0 {
+			return result
+		}
+	}
+	if first.DocumentVersion != second.DocumentVersion {
+		if first.DocumentVersion < second.DocumentVersion {
+			return -1
+		}
+		return 1
+	}
+	if first.Ordinal < second.Ordinal {
+		return -1
+	}
+	if first.Ordinal > second.Ordinal {
+		return 1
+	}
+	return 0
 }
 
 // normalizeAndHashConfig returns the same deep-copied configuration object that
