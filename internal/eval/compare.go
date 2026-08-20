@@ -379,6 +379,78 @@ func validateQueryEvidence(mode string, query QueryResult, config map[string]any
 			return err
 		}
 	}
+	if err := validateCandidateSetEvidence(mode, query, config, topK); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateCandidateSetEvidence(mode string, query QueryResult, config map[string]any, topK int) error {
+	wantStages := map[string][]string{
+		"fts":    {"fts"},
+		"dense":  {"dense"},
+		"hybrid": {"fts", "dense"},
+	}[mode]
+	if len(query.CandidateSets) != len(wantStages) {
+		return fmt.Errorf("%s candidate sets must be %v", mode, wantStages)
+	}
+	sets := make(map[string]map[int]string, len(query.CandidateSets))
+	for setIndex, candidateSet := range query.CandidateSets {
+		if candidateSet.Stage != wantStages[setIndex] {
+			return fmt.Errorf("%s candidate sets must be ordered %v", mode, wantStages)
+		}
+		limit := topK
+		if mode == "hybrid" {
+			floorKey := candidateSet.Stage + "_candidate_k"
+			floor, _ := configInteger(config[floorKey])
+			limit = max(topK, floor)
+		}
+		if len(candidateSet.Hits) > limit {
+			return fmt.Errorf("%s candidate set %q has %d hits, greater than effective depth %d", mode, candidateSet.Stage, len(candidateSet.Hits), limit)
+		}
+		seen := make(map[string]struct{}, len(candidateSet.Hits))
+		byRank := make(map[int]string, len(candidateSet.Hits))
+		for index, candidate := range candidateSet.Hits {
+			if candidate.Rank != index+1 || strings.TrimSpace(candidate.ChunkID) == "" {
+				return fmt.Errorf("%s candidate set %q must have non-empty chunks ranked continuously from 1", mode, candidateSet.Stage)
+			}
+			if _, duplicate := seen[candidate.ChunkID]; duplicate {
+				return fmt.Errorf("%s candidate set %q contains duplicate chunk %q", mode, candidateSet.Stage, candidate.ChunkID)
+			}
+			seen[candidate.ChunkID] = struct{}{}
+			byRank[candidate.Rank] = candidate.ChunkID
+		}
+		sets[candidateSet.Stage] = byRank
+	}
+
+	if mode == "fts" || mode == "dense" {
+		candidates := query.CandidateSets[0].Hits
+		if len(candidates) != len(query.Hits) {
+			return fmt.Errorf("%s final hits must equal its candidate set", mode)
+		}
+		for index, hit := range query.Hits {
+			if candidates[index].ChunkID != hit.ChunkID || candidates[index].Rank != hit.Rank {
+				return fmt.Errorf("%s final hits must equal its candidate set", mode)
+			}
+		}
+		return nil
+	}
+
+	for hitIndex, hit := range query.Hits {
+		foundSource := false
+		for _, score := range hit.StageScores {
+			if score.Stage != "fts" && score.Stage != "dense" {
+				continue
+			}
+			foundSource = true
+			if sets[score.Stage][score.Rank] != hit.ChunkID {
+				return fmt.Errorf("hybrid hit %d %s source rank does not match the recorded candidate set", hitIndex, score.Stage)
+			}
+		}
+		if !foundSource {
+			return fmt.Errorf("hybrid hit %d has no recorded source candidate", hitIndex)
+		}
+	}
 	return nil
 }
 
@@ -566,6 +638,15 @@ func validateComparableManifest(side string, manifest Manifest) error {
 			}
 			seenHitIDs[hit.ChunkID] = struct{}{}
 			rankedIDs = append(rankedIDs, hit.ChunkID)
+		}
+		evidenceIDs := append([]string(nil), rankedIDs...)
+		for _, candidateSet := range query.CandidateSets {
+			for _, candidate := range candidateSet.Hits {
+				evidenceIDs = append(evidenceIDs, candidate.ChunkID)
+			}
+		}
+		if leaked := forbiddenHits(evidenceIDs, query.ForbiddenChunkIDs); len(leaked) != 0 {
+			return fmt.Errorf("%s: per_query[%d] candidate evidence contains forbidden chunks %v", prefix, index, leaked)
 		}
 		recomputed := EvaluateRanking(rankedIDs, query.GoldChunkIDs, manifest.TopK)
 		if !metricsEqual(recomputed, query.Metrics) {

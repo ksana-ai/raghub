@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	ReportSchemaVersion = "raghub.eval.report/v2"
+	ReportSchemaVersion = "raghub.eval.report/v3"
 	SmokeStatus         = "smoke"
 	IncompleteStatus    = "incomplete"
 )
@@ -97,19 +97,20 @@ type HitRecord struct {
 }
 
 type QueryResult struct {
-	ID                string             `json:"id"`
-	Category          string             `json:"category"`
-	TenantID          string             `json:"tenant_id"`
-	PrincipalID       string             `json:"principal_id,omitempty"`
-	Query             string             `json:"query"`
-	GoldChunkIDs      []string           `json:"gold_chunk_ids"`
-	ForbiddenChunkIDs []string           `json:"forbidden_chunk_ids,omitempty"`
-	ForbiddenHits     []string           `json:"forbidden_hits,omitempty"`
-	Hits              []HitRecord        `json:"hits"`
-	Traces            []model.StageTrace `json:"traces,omitempty"`
-	Metrics           RankingMetrics     `json:"metrics"`
-	LatencyMS         float64            `json:"latency_ms"`
-	Error             string             `json:"error,omitempty"`
+	ID                string               `json:"id"`
+	Category          string               `json:"category"`
+	TenantID          string               `json:"tenant_id"`
+	PrincipalID       string               `json:"principal_id,omitempty"`
+	Query             string               `json:"query"`
+	GoldChunkIDs      []string             `json:"gold_chunk_ids"`
+	ForbiddenChunkIDs []string             `json:"forbidden_chunk_ids,omitempty"`
+	ForbiddenHits     []string             `json:"forbidden_hits,omitempty"`
+	Hits              []HitRecord          `json:"hits"`
+	CandidateSets     []model.CandidateSet `json:"candidate_sets"`
+	Traces            []model.StageTrace   `json:"traces,omitempty"`
+	Metrics           RankingMetrics       `json:"metrics"`
+	LatencyMS         float64              `json:"latency_ms"`
+	Error             string               `json:"error,omitempty"`
 }
 
 type Summary struct {
@@ -257,6 +258,7 @@ func (r *Runner) Run(ctx context.Context, loaded LoadedDataset, options Options)
 			GoldChunkIDs:      append([]string(nil), query.GoldChunkIDs...),
 			ForbiddenChunkIDs: append([]string(nil), query.ForbiddenChunkIDs...),
 			Hits:              []HitRecord{},
+			CandidateSets:     []model.CandidateSet{},
 			LatencyMS:         latencyMS,
 		}
 		if searchErr != nil {
@@ -266,6 +268,12 @@ func (r *Runner) Run(ctx context.Context, loaded LoadedDataset, options Options)
 			allRankedIDs := make([]string, 0, len(searchResult.Hits))
 			for _, hit := range searchResult.Hits {
 				allRankedIDs = append(allRankedIDs, hit.ChunkID)
+			}
+			result.CandidateSets = cloneCandidateSets(searchResult.CandidateSets)
+			for _, candidateSet := range searchResult.CandidateSets {
+				for _, hit := range candidateSet.Hits {
+					allRankedIDs = append(allRankedIDs, hit.ChunkID)
+				}
 			}
 			hits := searchResult.Hits
 			if len(hits) > options.TopK {
@@ -329,6 +337,17 @@ func (r *Runner) Run(ctx context.Context, loaded LoadedDataset, options Options)
 		return manifest, err
 	}
 	return manifest, nil
+}
+
+func cloneCandidateSets(source []model.CandidateSet) []model.CandidateSet {
+	result := make([]model.CandidateSet, 0, len(source))
+	for _, candidateSet := range source {
+		result = append(result, model.CandidateSet{
+			Stage: candidateSet.Stage,
+			Hits:  append([]model.CandidateHit(nil), candidateSet.Hits...),
+		})
+	}
+	return result
 }
 
 func newManifest(loaded LoadedDataset, options Options, started time.Time) Manifest {

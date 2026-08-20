@@ -124,7 +124,23 @@ type StageTrace struct {
 	DurationMS float64 `json:"duration_ms"`
 }
 
+// CandidateHit identifies one authorization-filtered branch candidate. It is
+// internal evaluation evidence and intentionally omits content and raw scores.
+type CandidateHit struct {
+	ChunkID string `json:"chunk_id"`
+	Rank    int    `json:"rank"`
+}
+
+type CandidateSet struct {
+	Stage string         `json:"stage"`
+	Hits  []CandidateHit `json:"hits"`
+}
+
 type SearchResult struct {
 	Hits   []SearchHit  `json:"hits"`
 	Traces []StageTrace `json:"traces"`
+	// CandidateSets are consumed by the offline evaluator to distinguish
+	// candidate-generation misses from fusion-ordering misses. They are never
+	// serialized by the public HTTP API.
+	CandidateSets []CandidateSet `json:"-"`
 }

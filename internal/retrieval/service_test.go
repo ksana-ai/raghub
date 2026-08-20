@@ -171,6 +171,10 @@ func TestServiceRunsDenseQueryEmbeddingAndPreservesTraces(t *testing.T) {
 	if len(result.Traces) != 2 || result.Traces[0].Stage != "query_embedding" || result.Traces[1].Stage != "dense" {
 		t.Fatalf("traces = %+v", result.Traces)
 	}
+	if len(result.CandidateSets) != 1 || result.CandidateSets[0].Stage != "dense" ||
+		len(result.CandidateSets[0].Hits) != 1 || result.CandidateSets[0].Hits[0].ChunkID != "guide:v000001:c0000" {
+		t.Fatalf("dense candidate evidence = %+v", result.CandidateSets)
+	}
 }
 
 func TestServiceRejectsInvalidDenseEmbedding(t *testing.T) {
@@ -271,6 +275,11 @@ func TestServiceRunsHybridBranchesConcurrentlyAndFusesDeterministically(t *testi
 	if !equalStrings(traceStages, wantTraces) {
 		t.Fatalf("trace stages = %v, want %v", traceStages, wantTraces)
 	}
+	if len(result.CandidateSets) != 2 || result.CandidateSets[0].Stage != "fts" || result.CandidateSets[1].Stage != "dense" {
+		t.Fatalf("hybrid candidate set stages = %+v", result.CandidateSets)
+	}
+	assertCandidateIDs(t, result.CandidateSets[0], []string{"chunk-a", "chunk-b", "chunk-c"})
+	assertCandidateIDs(t, result.CandidateSets[1], []string{"chunk-c", "chunk-a", "chunk-d"})
 }
 
 func TestServiceHybridUsesLargerOfTopKAndConfiguredCandidateDepth(t *testing.T) {
@@ -479,6 +488,18 @@ func assertChunkOrder(t *testing.T, hits []model.SearchHit, want []string) {
 	}
 	if !equalStrings(got, want) {
 		t.Fatalf("chunk order = %v, want %v", got, want)
+	}
+}
+
+func assertCandidateIDs(t *testing.T, candidateSet model.CandidateSet, want []string) {
+	t.Helper()
+	if len(candidateSet.Hits) != len(want) {
+		t.Fatalf("candidate set %q length = %d, want %d", candidateSet.Stage, len(candidateSet.Hits), len(want))
+	}
+	for index, chunkID := range want {
+		if candidateSet.Hits[index].ChunkID != chunkID || candidateSet.Hits[index].Rank != index+1 {
+			t.Fatalf("candidate set %q hit %d = %+v, want chunk=%q rank=%d", candidateSet.Stage, index, candidateSet.Hits[index], chunkID, index+1)
+		}
 	}
 }
 

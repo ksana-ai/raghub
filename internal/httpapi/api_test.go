@@ -77,8 +77,9 @@ func TestIngestPassesTenantOutsidePayload(t *testing.T) {
 
 func TestSearchPassesHybridModePrincipalAndReturnsTrace(t *testing.T) {
 	searcher := &fakeSearcher{result: model.SearchResult{
-		Hits:   []model.SearchHit{{ChunkID: "guide:v000001:c0000", Score: 0.8}},
-		Traces: []model.StageTrace{{Stage: "fts", DurationMS: 1.2}},
+		Hits:          []model.SearchHit{{ChunkID: "guide:v000001:c0000", Score: 0.8}},
+		Traces:        []model.StageTrace{{Stage: "fts", DurationMS: 1.2}},
+		CandidateSets: []model.CandidateSet{{Stage: "fts", Hits: []model.CandidateHit{{ChunkID: "internal-candidate", Rank: 1}}}},
 	}}
 	handler := newTestHandler(&fakeIngestor{}, searcher, fakeReadiness{})
 	request := httptest.NewRequest(http.MethodPost, "/v1/search", strings.NewReader(`{"query":"deployment","top_k":3,"mode":"hybrid"}`))
@@ -103,6 +104,9 @@ func TestSearchPassesHybridModePrincipalAndReturnsTrace(t *testing.T) {
 	}
 	if len(body.Traces) != 1 || body.Traces[0].Stage != "fts" {
 		t.Fatalf("unexpected traces: %+v", body.Traces)
+	}
+	if strings.Contains(response.Body.String(), "candidate") {
+		t.Fatalf("internal candidate evidence leaked through HTTP: %s", response.Body.String())
 	}
 }
 

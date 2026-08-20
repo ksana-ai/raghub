@@ -127,7 +127,12 @@ func (s *Service) Search(ctx context.Context, request model.SearchRequest) (mode
 		if s == nil || s.retriever == nil {
 			return model.SearchResult{}, errors.New("FTS retriever is not configured")
 		}
-		return s.retriever.Search(ctx, request)
+		result, err := s.retriever.Search(ctx, request)
+		if err != nil {
+			return model.SearchResult{}, err
+		}
+		result.CandidateSets = []model.CandidateSet{candidateSet("fts", result.Hits)}
+		return result, nil
 	case model.SearchModeDense:
 		return s.searchDense(ctx, request)
 	case model.SearchModeHybrid:
@@ -176,6 +181,7 @@ func (s *Service) searchDense(ctx context.Context, request model.SearchRequest) 
 		return model.SearchResult{}, err
 	}
 	result.Traces = append([]model.StageTrace{{Stage: "query_embedding", DurationMS: embeddingDuration}}, result.Traces...)
+	result.CandidateSets = []model.CandidateSet{candidateSet("dense", result.Hits)}
 	return result, nil
 }
 
@@ -251,7 +257,22 @@ func (s *Service) searchHybrid(ctx context.Context, request model.SearchRequest)
 		Stage:      "rrf_fusion",
 		DurationMS: float64(time.Since(fusionStartedAt).Microseconds()) / 1000,
 	})
-	return model.SearchResult{Hits: hits, Traces: traces}, nil
+	return model.SearchResult{
+		Hits:   hits,
+		Traces: traces,
+		CandidateSets: []model.CandidateSet{
+			candidateSet("fts", ftsBranch.result.Hits),
+			candidateSet("dense", denseBranch.result.Hits),
+		},
+	}, nil
+}
+
+func candidateSet(stage string, hits []model.SearchHit) model.CandidateSet {
+	result := model.CandidateSet{Stage: stage, Hits: make([]model.CandidateHit, 0, len(hits))}
+	for index, hit := range hits {
+		result.Hits = append(result.Hits, model.CandidateHit{ChunkID: hit.ChunkID, Rank: index + 1})
+	}
+	return result
 }
 
 func deterministicHybridBranchError(ftsErr, denseErr error) (string, error) {

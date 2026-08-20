@@ -276,6 +276,43 @@ func TestRunnerForbiddenTailHitFailsSafetyGate(t *testing.T) {
 	}
 }
 
+func TestRunnerForbiddenBranchCandidateFailsSafetyGateEvenWhenNotFused(t *testing.T) {
+	t.Parallel()
+
+	dataset := Dataset{
+		Name: "test", Version: "1", Documents: []DatasetDocument{
+			{TenantID: "tenant-a", DocumentID: "public", Title: "Public", Content: "alpha"},
+			{TenantID: "tenant-a", DocumentID: "private", Title: "Private", Content: "secret"},
+		}, Queries: []QueryCase{{
+			ID: "q1", Category: "acl", TenantID: "tenant-a", Query: "alpha",
+			GoldChunkIDs: []string{"public:v000001:c0000"}, ForbiddenChunkIDs: []string{"private:v000001:c0000"},
+		}},
+	}
+	searcher := &fakeSearcher{results: map[string]model.SearchResult{
+		"alpha": {
+			Hits: []model.SearchHit{{ChunkID: "public:v000001:c0000"}},
+			CandidateSets: []model.CandidateSet{
+				{Stage: "fts", Hits: []model.CandidateHit{{ChunkID: "public:v000001:c0000", Rank: 1}}},
+				{Stage: "dense", Hits: []model.CandidateHit{{ChunkID: "private:v000001:c0000", Rank: 1}}},
+			},
+		},
+	}, errors: map[string]error{}}
+	manifest, err := NewRunner(&fakeIngestor{}, searcher, inspectorForDataset(dataset)).Run(
+		context.Background(), LoadedDataset{Dataset: dataset, SHA256: "x"}, Options{
+			TopK: 1, SearchMode: model.SearchModeHybrid, RetrieverName: "fake", Command: "raghub-eval",
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "safety gate failed") {
+		t.Fatalf("Run() error = %v, want forbidden-candidate failure", err)
+	}
+	if manifest.Summary.Gates.NoForbiddenHits || len(manifest.PerQuery[0].ForbiddenHits) != 1 {
+		t.Fatalf("forbidden candidate was not recorded: %+v", manifest.PerQuery[0])
+	}
+	if len(manifest.PerQuery[0].Hits) != 1 || manifest.PerQuery[0].Hits[0].ChunkID != "public:v000001:c0000" {
+		t.Fatalf("final Hybrid hits changed unexpectedly: %+v", manifest.PerQuery[0].Hits)
+	}
+}
+
 func TestRunnerRejectsWrongIngestIdentity(t *testing.T) {
 	t.Parallel()
 

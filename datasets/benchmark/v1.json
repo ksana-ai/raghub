@@ -1,0 +1,728 @@
+{
+  "schema_version": "raghub.eval.dataset/v1",
+  "name": "raghub-hard-benchmark",
+  "version": "1.0.0",
+  "description": "Preregistered 50-query retrieval benchmark for exact disambiguation, semantic paraphrase, cross-language retrieval, near-duplicate ranking, multi-relevant recall, ACL enforcement, and tenant isolation. Query text and gold references are frozen before the first retrieval run.",
+  "documents": [
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-quasar-prod",
+      "title": "Quasar Production Gateway",
+      "source_uri": "fixture://benchmark-v1/acme/quasar-prod",
+      "content": "# Quasar production gateway\n\nThe production API endpoint is https://api.acme.test/v3/quasar. Its request timeout is 18 seconds, and the Control Plane team owns production escalation.",
+      "metadata": {"category": "gateway", "environment": "production", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-quasar-stage",
+      "title": "Quasar Staging Gateway",
+      "source_uri": "fixture://benchmark-v1/acme/quasar-stage",
+      "content": "# Quasar staging gateway\n\nThe staging API endpoint is https://api.acme.test/v3/quasar-stage. Its request timeout is 45 seconds, and the Quality Engineering team owns staging escalation.",
+      "metadata": {"category": "gateway", "environment": "staging", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-orion-v2",
+      "title": "Orion Connector Version 2",
+      "source_uri": "fixture://benchmark-v1/acme/orion-v2",
+      "content": "# Orion connector version 2\n\nThe current Orion connector uses https://identity.acme.test/oauth2/device and an ES256 client assertion. Version 2 is the supported authentication flow.",
+      "metadata": {"category": "integration", "version": "2", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-orion-v1",
+      "title": "Orion Connector Version 1 Legacy Notice",
+      "source_uri": "fixture://benchmark-v1/acme/orion-v1",
+      "content": "# Orion connector version 1\n\nThe legacy Orion connector posts a client secret to https://identity.acme.test/oauth/token. Version 1 reaches end of support on 2026-09-30.",
+      "metadata": {"category": "integration", "version": "1", "status": "legacy", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-error-xj104",
+      "title": "Worker Error XJ-104",
+      "source_uri": "fixture://benchmark-v1/acme/error-xj104",
+      "content": "# Error XJ-104\n\nXJ-104 means a queue lease expired because the worker heartbeat was absent for more than 90 seconds. Resume the worker only after its lease is reacquired.",
+      "metadata": {"category": "runbook", "error_code": "XJ-104", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-error-xj140",
+      "title": "Worker Error XJ-140",
+      "source_uri": "fixture://benchmark-v1/acme/error-xj140",
+      "content": "# Error XJ-140\n\nXJ-140 means the job payload signature does not match the registered signing key. Rotate or correct the key before resubmitting the job.",
+      "metadata": {"category": "runbook", "error_code": "XJ-140", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-sku-left",
+      "title": "Graphite Left-Hand Adapter",
+      "source_uri": "fixture://benchmark-v1/acme/sku-left",
+      "content": "# SKU LHX-441\n\nSKU LHX-441 is the graphite left-hand torque adapter with a 12 millimeter socket. It is not compatible with the right-hand fixture.",
+      "metadata": {"category": "catalog", "sku": "LHX-441", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-sku-right",
+      "title": "Graphite Right-Hand Adapter",
+      "source_uri": "fixture://benchmark-v1/acme/sku-right",
+      "content": "# SKU LHX-414\n\nSKU LHX-414 is the graphite right-hand torque adapter with a 12 millimeter socket. It is not compatible with the left-hand fixture.",
+      "metadata": {"category": "catalog", "sku": "LHX-414", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-membership",
+      "title": "Membership Renewal Policy",
+      "source_uri": "fixture://benchmark-v1/acme/membership",
+      "content": "# Ending membership renewal\n\nTurning off renewal prevents the next charge while service remains available until the current paid term ends. Access is not removed immediately.",
+      "metadata": {"category": "billing", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-restore",
+      "title": "Deleted Record Recovery",
+      "source_uri": "fixture://benchmark-v1/acme/restore",
+      "content": "# Deleted record recovery\n\nPoint-in-time recovery retains database changes for 42 days. A record removed 40 days ago can be restored, while one removed 43 days ago cannot.",
+      "metadata": {"category": "recovery", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-blue-green",
+      "title": "Zero-Downtime Release Procedure",
+      "source_uri": "fixture://benchmark-v1/acme/blue-green",
+      "content": "# Blue-green deployment\n\nDeploy to the idle environment, complete health checks, then switch the production router. Keep the previous environment available for immediate rollback.",
+      "metadata": {"category": "deployment", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-invoice",
+      "title": "Invoice Address Corrections",
+      "source_uri": "fixture://benchmark-v1/acme/invoice",
+      "content": "# Correcting the next invoice\n\nUpdate the legal entity address under Billing Profile before the invoice cutoff. Editing a team workspace address does not change tax invoices.",
+      "metadata": {"category": "billing", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-key-rotation",
+      "title": "Signing Key Rotation",
+      "source_uri": "fixture://benchmark-v1/acme/key-rotation",
+      "content": "# Rotating signing keys without interruption\n\nPublish the new public key first, accept both old and new key identifiers for 24 hours, switch signing to the new key, and then revoke the old key.",
+      "metadata": {"category": "security", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-residency",
+      "title": "German Customer Data Residency",
+      "source_uri": "fixture://benchmark-v1/acme/residency",
+      "content": "# Germany residency requirement\n\nCustomer content for the regulated German deployment must remain in the Frankfurt region. Replication to a United States region is disabled.",
+      "metadata": {"category": "compliance", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-leave",
+      "title": "Parental Leave Notice",
+      "source_uri": "fixture://benchmark-v1/acme/leave",
+      "content": "# Parental leave planning\n\nEmployees should notify People Operations at least 30 calendar days before planned parental leave, unless an emergency makes advance notice impossible.",
+      "metadata": {"category": "people", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-expense",
+      "title": "Travel Expense Deadline",
+      "source_uri": "fixture://benchmark-v1/acme/expense",
+      "content": "# Travel receipt deadline\n\nSubmit hotel and transportation receipts within 10 business days after returning from a trip. Late submissions require finance approval.",
+      "metadata": {"category": "finance", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-umbrella-zh",
+      "title": "访客雨伞借用",
+      "source_uri": "fixture://benchmark-v1/acme/umbrella-zh",
+      "content": "# 访客雨伞\n\n下雨时，访客可以在一楼东侧前台借用蓝色雨伞，离开园区前需要归还到同一地点。",
+      "metadata": {"category": "facilities", "language": "zh"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-travel-zh",
+      "title": "差旅票据提交规则",
+      "source_uri": "fixture://benchmark-v1/acme/travel-zh",
+      "content": "# 差旅票据\n\n员工返程后应在七个自然日内上传机票和酒店票据，超过期限需要直属经理说明原因。",
+      "metadata": {"category": "finance", "language": "zh"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-parental-zh",
+      "title": "育儿假申请说明",
+      "source_uri": "fixture://benchmark-v1/acme/parental-zh",
+      "content": "# 育儿假申请\n\n计划休育儿假的员工原则上需要提前二十一天通知人力资源部门，并提交预计开始日期。",
+      "metadata": {"category": "people", "language": "zh"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-training-en",
+      "title": "Annual Security Training",
+      "source_uri": "fixture://benchmark-v1/acme/training-en",
+      "content": "# Security awareness training\n\nEvery employee must finish the annual phishing and credential-safety course by November 15. Contractors follow the same deadline.",
+      "metadata": {"category": "security", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-allergen-en",
+      "title": "Cafeteria Allergen Assistance",
+      "source_uri": "fixture://benchmark-v1/acme/allergen-en",
+      "content": "# Cafeteria allergy information\n\nGuests with a nut allergy should ask the chef at the north serving counter for the red allergen binder before selecting a meal.",
+      "metadata": {"category": "facilities", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-badge-zh",
+      "title": "访客证归还",
+      "source_uri": "fixture://benchmark-v1/acme/badge-zh",
+      "content": "# 访客证归还\n\n访客离开办公楼时，应把临时门禁证投入南门保安台旁边的银色回收箱。",
+      "metadata": {"category": "facilities", "language": "zh"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-audit-admin",
+      "title": "Administrative Audit Retention",
+      "source_uri": "fixture://benchmark-v1/acme/audit-admin",
+      "content": "# Administrative permission audit\n\nChanges to administrative roles and privileged permissions are retained for 400 days in the immutable audit archive.",
+      "metadata": {"category": "audit", "scope": "admin", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-audit-user",
+      "title": "User Activity Retention",
+      "source_uri": "fixture://benchmark-v1/acme/audit-user",
+      "content": "# Ordinary user activity audit\n\nRoutine user sign-in and page-view events are retained for 30 days in the operational activity index.",
+      "metadata": {"category": "audit", "scope": "user", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-region-eu",
+      "title": "European Analytics Region",
+      "source_uri": "fixture://benchmark-v1/acme/region-eu",
+      "content": "# Analytics deployment in Europe\n\nThe European analytics workspace runs in eu-north-3 and uses the Stockholm operations group for regional escalation.",
+      "metadata": {"category": "infrastructure", "region": "eu-north-3", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-region-us",
+      "title": "United States Analytics Region",
+      "source_uri": "fixture://benchmark-v1/acme/region-us",
+      "content": "# Analytics deployment in the United States\n\nThe United States analytics workspace runs in us-central-7 and uses the Denver operations group for regional escalation.",
+      "metadata": {"category": "infrastructure", "region": "us-central-7", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-model-stable",
+      "title": "Stable Inference Release",
+      "source_uri": "fixture://benchmark-v1/acme/model-stable",
+      "content": "# Stable inference channel\n\nThe production stable channel serves model release 4.8.2 from /models/stable. It completed the full reliability qualification.",
+      "metadata": {"category": "model", "channel": "stable", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-model-canary",
+      "title": "Canary Inference Release",
+      "source_uri": "fixture://benchmark-v1/acme/model-canary",
+      "content": "# Canary inference channel\n\nThe experimental canary channel serves model release 4.9.0-rc3 from /models/canary. It is limited to internal evaluation traffic.",
+      "metadata": {"category": "model", "channel": "canary", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-backup-primary",
+      "title": "Primary Database Backups",
+      "source_uri": "fixture://benchmark-v1/acme/backup-primary",
+      "content": "# Primary database backups\n\nThe primary database takes a recoverable backup every night at 02:00 UTC and retains those recovery points for 35 days.",
+      "metadata": {"category": "backup", "tier": "primary", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-backup-archive",
+      "title": "Compliance Archive Backups",
+      "source_uri": "fixture://benchmark-v1/acme/backup-archive",
+      "content": "# Compliance archive backups\n\nThe compliance archive writes a non-operational snapshot on the first day of each month and retains it for seven years.",
+      "metadata": {"category": "backup", "tier": "archive", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-incident-detect",
+      "title": "Incident Detection Actions",
+      "source_uri": "fixture://benchmark-v1/acme/incident-detect",
+      "content": "# Detecting a payment incident\n\nWhen payment errors exceed five percent for five minutes, page the incident commander, freeze active deployments, and preserve the request trace sample.",
+      "metadata": {"category": "incident", "phase": "detect", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-incident-contain",
+      "title": "Incident Containment Actions",
+      "source_uri": "fixture://benchmark-v1/acme/incident-contain",
+      "content": "# Containing a payment incident\n\nAfter the incident is declared, disable the affected payment route, revoke the exposed service token, and redirect traffic to the healthy processor.",
+      "metadata": {"category": "incident", "phase": "contain", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-onboard-identity",
+      "title": "New Engineer Identity Setup",
+      "source_uri": "fixture://benchmark-v1/acme/onboard-identity",
+      "content": "# Engineer identity onboarding\n\nPeople Operations creates the corporate identity after the manager confirms the start date. The engineer must enroll two hardware-backed MFA factors.",
+      "metadata": {"category": "onboarding", "phase": "identity", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-onboard-repo",
+      "title": "New Engineer Repository Access",
+      "source_uri": "fixture://benchmark-v1/acme/onboard-repo",
+      "content": "# Engineer repository onboarding\n\nAfter identity setup, the manager adds the engineer to the least-privilege source-control team and requests access to the service repositories.",
+      "metadata": {"category": "onboarding", "phase": "repository", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-dr-database",
+      "title": "Database Disaster Recovery",
+      "source_uri": "fixture://benchmark-v1/acme/dr-database",
+      "content": "# Database disaster recovery\n\nTransaction logs support point-in-time database recovery for 30 days. Restore into an isolated cluster before promoting recovered records.",
+      "metadata": {"category": "disaster-recovery", "system": "database", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-dr-object",
+      "title": "Object Storage Disaster Recovery",
+      "source_uri": "fixture://benchmark-v1/acme/dr-object",
+      "content": "# Object storage disaster recovery\n\nImmutable object snapshots are written every six hours and retained for 14 days. Restore the required bucket prefix into a quarantine bucket first.",
+      "metadata": {"category": "disaster-recovery", "system": "object-storage", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-nebula-private",
+      "title": "Nebula Restricted Release Control",
+      "source_uri": "fixture://benchmark-v1/acme/nebula-private",
+      "content": "# Nebula restricted controls\n\nThe emergency unlock phrase is AMBER-KESTREL, and the restricted controller listens on port 9447. Only an authorized release commander may use either value.",
+      "allowed_principals": ["benchmark-alice", "benchmark-carol"],
+      "metadata": {"category": "restricted-runbook", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-nebula-public",
+      "title": "Nebula Public Escalation",
+      "source_uri": "fixture://benchmark-v1/acme/nebula-public",
+      "content": "# Nebula release escalation\n\nEngineers without restricted release access must contact the release commander through the public incident channel and must not attempt an emergency unlock.",
+      "metadata": {"category": "runbook", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-payroll-private",
+      "title": "Payroll Export Restricted Configuration",
+      "source_uri": "fixture://benchmark-v1/acme/payroll-private",
+      "content": "# Payroll export controls\n\nRestricted schedule PX-7 writes encrypted payroll exports to s3://acme-payroll-export-locked. Only payroll operators may access the schedule or bucket.",
+      "allowed_principals": ["benchmark-diana", "benchmark-erin"],
+      "metadata": {"category": "restricted-finance", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-payroll-public",
+      "title": "Payroll Export Public Status",
+      "source_uri": "fixture://benchmark-v1/acme/payroll-public",
+      "content": "# Payroll export status\n\nEmployees can view completion status on the finance operations page. Access to export schedules and storage locations requires a payroll operator.",
+      "metadata": {"category": "finance", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-aurora",
+      "title": "Acme Aurora Routing",
+      "source_uri": "fixture://benchmark-v1/acme/aurora",
+      "content": "# Project Aurora at Acme\n\nAcme uses Maple as the internal routing codename for Project Aurora. The warehouse operations group owns the route.",
+      "metadata": {"category": "project", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-globex",
+      "document_id": "b1-globex-aurora",
+      "title": "Globex Aurora Routing",
+      "source_uri": "fixture://benchmark-v1/globex/aurora",
+      "content": "# Project Aurora at Globex\n\nGlobex uses Topaz as the internal routing codename for Project Aurora. The field research group owns the route.",
+      "metadata": {"category": "project", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-acme",
+      "document_id": "b1-acme-mercury",
+      "title": "Acme Mercury Billing",
+      "source_uri": "fixture://benchmark-v1/acme/mercury",
+      "content": "# Project Mercury billing at Acme\n\nAcme processes Project Mercury invoices in eu-west-4. The Dublin finance team owns billing reconciliation.",
+      "metadata": {"category": "project", "language": "en"}
+    },
+    {
+      "tenant_id": "eval-benchmark-v1-globex",
+      "document_id": "b1-globex-mercury",
+      "title": "Globex Mercury Billing",
+      "source_uri": "fixture://benchmark-v1/globex/mercury",
+      "content": "# Project Mercury billing at Globex\n\nGlobex processes Project Mercury invoices in us-central-2. The Chicago research finance team owns billing reconciliation.",
+      "metadata": {"category": "project", "language": "en"}
+    }
+  ],
+  "queries": [
+    {
+      "id": "b1-exact-quasar-prod",
+      "category": "exact-disambiguation",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Quasar production API endpoint and timeout",
+      "gold_chunk_ids": ["b1-acme-quasar-prod:v000001:c0000"]
+    },
+    {
+      "id": "b1-exact-quasar-stage",
+      "category": "exact-disambiguation",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Quasar staging gateway timeout 45 seconds",
+      "gold_chunk_ids": ["b1-acme-quasar-stage:v000001:c0000"]
+    },
+    {
+      "id": "b1-exact-orion-v2",
+      "category": "exact-disambiguation",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Orion current version 2 device authentication endpoint",
+      "gold_chunk_ids": ["b1-acme-orion-v2:v000001:c0000"]
+    },
+    {
+      "id": "b1-exact-orion-v1",
+      "category": "exact-disambiguation",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Orion legacy version 1 client secret sunset 2026-09-30",
+      "gold_chunk_ids": ["b1-acme-orion-v1:v000001:c0000"]
+    },
+    {
+      "id": "b1-exact-error-xj104",
+      "category": "exact-disambiguation",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "XJ-104 missing heartbeat queue lease",
+      "gold_chunk_ids": ["b1-acme-error-xj104:v000001:c0000"]
+    },
+    {
+      "id": "b1-exact-error-xj140",
+      "category": "exact-disambiguation",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "XJ-140 payload signature registered key",
+      "gold_chunk_ids": ["b1-acme-error-xj140:v000001:c0000"]
+    },
+    {
+      "id": "b1-exact-sku-left",
+      "category": "exact-disambiguation",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "LHX-441 graphite left-hand 12 millimeter adapter",
+      "gold_chunk_ids": ["b1-acme-sku-left:v000001:c0000"]
+    },
+    {
+      "id": "b1-exact-sku-right",
+      "category": "exact-disambiguation",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "LHX-414 graphite right-hand 12 millimeter adapter",
+      "gold_chunk_ids": ["b1-acme-sku-right:v000001:c0000"]
+    },
+    {
+      "id": "b1-semantic-membership",
+      "category": "semantic-paraphrase",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "How can I stop the next charge without losing the service time I already paid for?",
+      "gold_chunk_ids": ["b1-acme-membership:v000001:c0000"]
+    },
+    {
+      "id": "b1-semantic-restore",
+      "category": "semantic-paraphrase",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Can the operations team bring back a database row deleted forty days ago?",
+      "gold_chunk_ids": ["b1-acme-restore:v000001:c0000"]
+    },
+    {
+      "id": "b1-semantic-blue-green",
+      "category": "semantic-paraphrase",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Which release procedure verifies the new build before moving live traffic and preserves a fast rollback?",
+      "gold_chunk_ids": ["b1-acme-blue-green:v000001:c0000"]
+    },
+    {
+      "id": "b1-semantic-invoice",
+      "category": "semantic-paraphrase",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Where should our company location be corrected so the next tax bill uses it?",
+      "gold_chunk_ids": ["b1-acme-invoice:v000001:c0000"]
+    },
+    {
+      "id": "b1-semantic-key-rotation",
+      "category": "semantic-paraphrase",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "How do we replace a signing credential without rejecting requests during the transition?",
+      "gold_chunk_ids": ["b1-acme-key-rotation:v000001:c0000"]
+    },
+    {
+      "id": "b1-semantic-residency",
+      "category": "semantic-paraphrase",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Must regulated German customer content stay inside Europe, and which location is approved?",
+      "gold_chunk_ids": ["b1-acme-residency:v000001:c0000"]
+    },
+    {
+      "id": "b1-semantic-leave",
+      "category": "semantic-paraphrase",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "How much advance warning should an employee normally give before starting parental leave?",
+      "gold_chunk_ids": ["b1-acme-leave:v000001:c0000"]
+    },
+    {
+      "id": "b1-semantic-expense",
+      "category": "semantic-paraphrase",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "What is the normal deadline for filing hotel and transport receipts after a business trip?",
+      "gold_chunk_ids": ["b1-acme-expense:v000001:c0000"]
+    },
+    {
+      "id": "b1-cross-umbrella",
+      "category": "cross-language",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Where can a visitor borrow a blue umbrella when it rains?",
+      "gold_chunk_ids": ["b1-acme-umbrella-zh:v000001:c0000"]
+    },
+    {
+      "id": "b1-cross-travel",
+      "category": "cross-language",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "How many calendar days after returning must flight and hotel receipts be uploaded?",
+      "gold_chunk_ids": ["b1-acme-travel-zh:v000001:c0000"]
+    },
+    {
+      "id": "b1-cross-parental",
+      "category": "cross-language",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "How far ahead should planned childcare leave be reported to HR?",
+      "gold_chunk_ids": ["b1-acme-parental-zh:v000001:c0000"]
+    },
+    {
+      "id": "b1-cross-training",
+      "category": "cross-language",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "员工和外包人员必须在什么时候完成年度钓鱼邮件安全培训？",
+      "gold_chunk_ids": ["b1-acme-training-en:v000001:c0000"]
+    },
+    {
+      "id": "b1-cross-allergen",
+      "category": "cross-language",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "对坚果过敏的访客应该去哪里查看食物过敏原资料？",
+      "gold_chunk_ids": ["b1-acme-allergen-en:v000001:c0000"]
+    },
+    {
+      "id": "b1-cross-badge",
+      "category": "cross-language",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Where should a temporary visitor access badge be returned when leaving?",
+      "gold_chunk_ids": ["b1-acme-badge-zh:v000001:c0000"]
+    },
+    {
+      "id": "b1-near-audit-admin",
+      "category": "near-duplicate-distractor",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "retention for privileged administrative permission changes",
+      "gold_chunk_ids": ["b1-acme-audit-admin:v000001:c0000"]
+    },
+    {
+      "id": "b1-near-audit-user",
+      "category": "near-duplicate-distractor",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "retention for ordinary user sign-in and page activity",
+      "gold_chunk_ids": ["b1-acme-audit-user:v000001:c0000"]
+    },
+    {
+      "id": "b1-near-region-eu",
+      "category": "near-duplicate-distractor",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "European analytics workspace deployment region and operations group",
+      "gold_chunk_ids": ["b1-acme-region-eu:v000001:c0000"]
+    },
+    {
+      "id": "b1-near-region-us",
+      "category": "near-duplicate-distractor",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "United States analytics workspace deployment region and operations group",
+      "gold_chunk_ids": ["b1-acme-region-us:v000001:c0000"]
+    },
+    {
+      "id": "b1-near-model-stable",
+      "category": "near-duplicate-distractor",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "fully qualified production stable model release and endpoint",
+      "gold_chunk_ids": ["b1-acme-model-stable:v000001:c0000"]
+    },
+    {
+      "id": "b1-near-model-canary",
+      "category": "near-duplicate-distractor",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "internal experimental canary model release and endpoint",
+      "gold_chunk_ids": ["b1-acme-model-canary:v000001:c0000"]
+    },
+    {
+      "id": "b1-near-backup-primary",
+      "category": "near-duplicate-distractor",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "nightly operational database recovery point time and retention",
+      "gold_chunk_ids": ["b1-acme-backup-primary:v000001:c0000"]
+    },
+    {
+      "id": "b1-near-backup-archive",
+      "category": "near-duplicate-distractor",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "monthly non-operational compliance snapshot retention",
+      "gold_chunk_ids": ["b1-acme-backup-archive:v000001:c0000"]
+    },
+    {
+      "id": "b1-multi-quasar",
+      "category": "multi-relevant",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Compare the Quasar production and staging endpoints, timeouts, and owning teams.",
+      "gold_chunk_ids": ["b1-acme-quasar-prod:v000001:c0000", "b1-acme-quasar-stage:v000001:c0000"]
+    },
+    {
+      "id": "b1-multi-orion",
+      "category": "multi-relevant",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Compare the supported Orion version 2 authentication flow with the legacy version 1 flow and sunset.",
+      "gold_chunk_ids": ["b1-acme-orion-v2:v000001:c0000", "b1-acme-orion-v1:v000001:c0000"]
+    },
+    {
+      "id": "b1-multi-incident-sequence",
+      "category": "multi-relevant",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "What detection and containment actions form the first response to a payment error incident?",
+      "gold_chunk_ids": ["b1-acme-incident-detect:v000001:c0000", "b1-acme-incident-contain:v000001:c0000"]
+    },
+    {
+      "id": "b1-multi-incident-token",
+      "category": "multi-relevant",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "When payment failures stay above threshold, what should be preserved and which credential must be revoked?",
+      "gold_chunk_ids": ["b1-acme-incident-detect:v000001:c0000", "b1-acme-incident-contain:v000001:c0000"]
+    },
+    {
+      "id": "b1-multi-onboard-access",
+      "category": "multi-relevant",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "What identity and repository access steps are required to onboard a new engineer?",
+      "gold_chunk_ids": ["b1-acme-onboard-identity:v000001:c0000", "b1-acme-onboard-repo:v000001:c0000"]
+    },
+    {
+      "id": "b1-multi-onboard-mfa",
+      "category": "multi-relevant",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "How does a new engineer enroll secure authentication and then obtain least-privilege code checkout access?",
+      "gold_chunk_ids": ["b1-acme-onboard-identity:v000001:c0000", "b1-acme-onboard-repo:v000001:c0000"]
+    },
+    {
+      "id": "b1-multi-dr-restore",
+      "category": "multi-relevant",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "How are accidentally deleted database records and object files restored safely?",
+      "gold_chunk_ids": ["b1-acme-dr-database:v000001:c0000", "b1-acme-dr-object:v000001:c0000"]
+    },
+    {
+      "id": "b1-multi-dr-retention",
+      "category": "multi-relevant",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Compare the recovery retention and isolation procedure for databases and object storage.",
+      "gold_chunk_ids": ["b1-acme-dr-database:v000001:c0000", "b1-acme-dr-object:v000001:c0000"]
+    },
+    {
+      "id": "b1-acl-nebula-alice",
+      "category": "acl",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "principal_id": "benchmark-alice",
+      "query": "Nebula emergency unlock phrase",
+      "gold_chunk_ids": ["b1-acme-nebula-private:v000001:c0000"]
+    },
+    {
+      "id": "b1-acl-nebula-carol",
+      "category": "acl",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "principal_id": "benchmark-carol",
+      "query": "Nebula restricted controller port",
+      "gold_chunk_ids": ["b1-acme-nebula-private:v000001:c0000"]
+    },
+    {
+      "id": "b1-acl-nebula-bob",
+      "category": "acl",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "principal_id": "benchmark-bob",
+      "query": "Nebula release emergency unlock help for an engineer without restricted access",
+      "gold_chunk_ids": ["b1-acme-nebula-public:v000001:c0000"],
+      "forbidden_chunk_ids": ["b1-acme-nebula-private:v000001:c0000"]
+    },
+    {
+      "id": "b1-acl-payroll-diana",
+      "category": "acl",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "principal_id": "benchmark-diana",
+      "query": "restricted payroll export schedule code",
+      "gold_chunk_ids": ["b1-acme-payroll-private:v000001:c0000"]
+    },
+    {
+      "id": "b1-acl-payroll-erin",
+      "category": "acl",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "principal_id": "benchmark-erin",
+      "query": "encrypted payroll export storage bucket",
+      "gold_chunk_ids": ["b1-acme-payroll-private:v000001:c0000"]
+    },
+    {
+      "id": "b1-acl-payroll-frank",
+      "category": "acl",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "principal_id": "benchmark-frank",
+      "query": "where can an employee check payroll export completion status",
+      "gold_chunk_ids": ["b1-acme-payroll-public:v000001:c0000"],
+      "forbidden_chunk_ids": ["b1-acme-payroll-private:v000001:c0000"]
+    },
+    {
+      "id": "b1-tenant-aurora-acme-code",
+      "category": "tenant-boundary",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Project Aurora internal routing codename",
+      "gold_chunk_ids": ["b1-acme-aurora:v000001:c0000"],
+      "forbidden_chunk_ids": ["b1-globex-aurora:v000001:c0000"]
+    },
+    {
+      "id": "b1-tenant-aurora-globex-code",
+      "category": "tenant-boundary",
+      "tenant_id": "eval-benchmark-v1-globex",
+      "query": "Project Aurora internal routing codename",
+      "gold_chunk_ids": ["b1-globex-aurora:v000001:c0000"],
+      "forbidden_chunk_ids": ["b1-acme-aurora:v000001:c0000"]
+    },
+    {
+      "id": "b1-tenant-aurora-acme-owner",
+      "category": "tenant-boundary",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Which group owns the Project Aurora route?",
+      "gold_chunk_ids": ["b1-acme-aurora:v000001:c0000"],
+      "forbidden_chunk_ids": ["b1-globex-aurora:v000001:c0000"]
+    },
+    {
+      "id": "b1-tenant-aurora-globex-owner",
+      "category": "tenant-boundary",
+      "tenant_id": "eval-benchmark-v1-globex",
+      "query": "Which group owns the Project Aurora route?",
+      "gold_chunk_ids": ["b1-globex-aurora:v000001:c0000"],
+      "forbidden_chunk_ids": ["b1-acme-aurora:v000001:c0000"]
+    },
+    {
+      "id": "b1-tenant-mercury-acme",
+      "category": "tenant-boundary",
+      "tenant_id": "eval-benchmark-v1-acme",
+      "query": "Project Mercury invoice billing region",
+      "gold_chunk_ids": ["b1-acme-mercury:v000001:c0000"],
+      "forbidden_chunk_ids": ["b1-globex-mercury:v000001:c0000"]
+    },
+    {
+      "id": "b1-tenant-mercury-globex",
+      "category": "tenant-boundary",
+      "tenant_id": "eval-benchmark-v1-globex",
+      "query": "Project Mercury invoice billing region",
+      "gold_chunk_ids": ["b1-globex-mercury:v000001:c0000"],
+      "forbidden_chunk_ids": ["b1-acme-mercury:v000001:c0000"]
+    }
+  ]
+}

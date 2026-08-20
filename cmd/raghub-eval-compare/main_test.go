@@ -29,7 +29,8 @@ func (testSearcher) Search(_ context.Context, request model.SearchRequest) (mode
 	case model.SearchModeDense:
 		hit.StageScores = []model.StageScore{{Stage: "dense", Rank: 1, Score: 1}}
 		return model.SearchResult{
-			Hits: []model.SearchHit{hit},
+			Hits:          []model.SearchHit{hit},
+			CandidateSets: []model.CandidateSet{{Stage: "dense", Hits: []model.CandidateHit{{ChunkID: hit.ChunkID, Rank: 1}}}},
 			Traces: []model.StageTrace{
 				{Stage: "query_embedding"},
 				{Stage: "dense"},
@@ -44,6 +45,10 @@ func (testSearcher) Search(_ context.Context, request model.SearchRequest) (mode
 		}
 		return model.SearchResult{
 			Hits: []model.SearchHit{hit},
+			CandidateSets: []model.CandidateSet{
+				{Stage: "fts", Hits: []model.CandidateHit{{ChunkID: hit.ChunkID, Rank: 1}}},
+				{Stage: "dense", Hits: []model.CandidateHit{{ChunkID: hit.ChunkID, Rank: 1}}},
+			},
 			Traces: []model.StageTrace{
 				{Stage: "fts"},
 				{Stage: "query_embedding"},
@@ -53,7 +58,11 @@ func (testSearcher) Search(_ context.Context, request model.SearchRequest) (mode
 		}, nil
 	default:
 		hit.StageScores = []model.StageScore{{Stage: "fts", Rank: 1, Score: 1}}
-		return model.SearchResult{Hits: []model.SearchHit{hit}, Traces: []model.StageTrace{{Stage: "fts"}}}, nil
+		return model.SearchResult{
+			Hits:          []model.SearchHit{hit},
+			CandidateSets: []model.CandidateSet{{Stage: "fts", Hits: []model.CandidateHit{{ChunkID: hit.ChunkID, Rank: 1}}}},
+			Traces:        []model.StageTrace{{Stage: "fts"}},
+		}, nil
 	}
 }
 
@@ -138,6 +147,42 @@ func TestRunWritesStrictThreeWaySmokeComparison(t *testing.T) {
 	}
 }
 
+func TestRunWritesCandidateDiagnosis(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	ftsPath := filepath.Join(directory, "fts-candidates.json")
+	densePath := filepath.Join(directory, "dense-candidates.json")
+	hybridPath := filepath.Join(directory, "hybrid-final.json")
+	outputPath := filepath.Join(directory, "diagnosis.json")
+	writeTestManifest(t, ftsPath, testManifest(t, "postgres_fts", model.SearchModeFTS, 20))
+	writeTestManifest(t, densePath, testManifest(t, "postgres_dense", model.SearchModeDense, 20))
+	writeTestManifest(t, hybridPath, testManifest(t, "postgres_hybrid_rrf", model.SearchModeHybrid, 5))
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"-candidate-diagnosis",
+		"-fts", ftsPath,
+		"-dense", densePath,
+		"-hybrid", hybridPath,
+		"-output", outputPath,
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run() = %d, stderr=%q", code, stderr.String())
+	}
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var diagnosis evalrun.CandidateDiagnosis
+	if err := json.Unmarshal(data, &diagnosis); err != nil {
+		t.Fatalf("decode candidate diagnosis: %v", err)
+	}
+	if diagnosis.SchemaVersion != evalrun.CandidateDiagnosisSchemaVersion || diagnosis.Summary.CompleteQueries != 1 {
+		t.Fatalf("unexpected candidate diagnosis: %+v", diagnosis)
+	}
+}
+
 func TestRunRejectsMixedOrIncompleteComparisonModes(t *testing.T) {
 	t.Parallel()
 
@@ -148,6 +193,7 @@ func TestRunRejectsMixedOrIncompleteComparisonModes(t *testing.T) {
 	}{
 		{name: "mixed", args: []string{"-baseline", "fts.json", "-candidate", "dense.json", "-hybrid", "hybrid.json"}, want: "cannot be combined"},
 		{name: "incomplete three-way", args: []string{"-fts", "fts.json", "-dense", "dense.json"}, want: "are all required"},
+		{name: "diagnosis with pair", args: []string{"-candidate-diagnosis", "-baseline", "fts.json", "-candidate", "dense.json"}, want: "requires -fts"},
 		{name: "no mode", args: nil, want: "provide either"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

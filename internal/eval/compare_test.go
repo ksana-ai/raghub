@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -164,6 +165,28 @@ func TestCompareThreeManifestsRejectsMislabeledOrUnpairedSide(t *testing.T) {
 		fts, dense, hybrid := newTriplet(t)
 		dense.PerQuery[0].Traces[0], dense.PerQuery[0].Traces[1] = dense.PerQuery[0].Traces[1], dense.PerQuery[0].Traces[0]
 		if _, err := CompareThreeManifests(fts, dense, hybrid); err == nil || !strings.Contains(err.Error(), "trace stages") {
+			t.Fatalf("CompareThreeManifests() error = %v", err)
+		}
+	})
+	t.Run("missing hybrid candidate set", func(t *testing.T) {
+		fts, dense, hybrid := newTriplet(t)
+		hybrid.PerQuery[0].CandidateSets = hybrid.PerQuery[0].CandidateSets[:1]
+		if _, err := CompareThreeManifests(fts, dense, hybrid); err == nil || !strings.Contains(err.Error(), "candidate sets") {
+			t.Fatalf("CompareThreeManifests() error = %v", err)
+		}
+	})
+	t.Run("hybrid source rank differs from candidate evidence", func(t *testing.T) {
+		fts, dense, hybrid := newTriplet(t)
+		hybrid.PerQuery[0].CandidateSets[0].Hits[0].ChunkID = "different-chunk"
+		if _, err := CompareThreeManifests(fts, dense, hybrid); err == nil || !strings.Contains(err.Error(), "recorded candidate set") {
+			t.Fatalf("CompareThreeManifests() error = %v", err)
+		}
+	})
+	t.Run("forbidden chunk hidden in branch candidates", func(t *testing.T) {
+		fts, dense, hybrid := newTriplet(t)
+		hybrid.PerQuery[0].CandidateSets[0].Hits = append(hybrid.PerQuery[0].CandidateSets[0].Hits,
+			model.CandidateHit{ChunkID: hybrid.PerQuery[0].ForbiddenChunkIDs[0], Rank: 2})
+		if _, err := CompareThreeManifests(fts, dense, hybrid); err == nil || !strings.Contains(err.Error(), "candidate evidence contains forbidden") {
 			t.Fatalf("CompareThreeManifests() error = %v", err)
 		}
 	})
@@ -373,12 +396,14 @@ func setManifestMode(t *testing.T, manifest *Manifest, mode string) {
 			hit := &manifest.PerQuery[0].Hits[index]
 			hit.StageScores = []model.StageScore{{Stage: "fts", Rank: hit.Rank, Score: hit.Score}}
 		}
+		manifest.PerQuery[0].CandidateSets = []model.CandidateSet{candidateSetFromRecords("fts", manifest.PerQuery[0].Hits)}
 	case "dense":
 		manifest.PerQuery[0].Traces = []model.StageTrace{{Stage: "query_embedding"}, {Stage: "dense"}}
 		for index := range manifest.PerQuery[0].Hits {
 			hit := &manifest.PerQuery[0].Hits[index]
 			hit.StageScores = []model.StageScore{{Stage: "dense", Rank: hit.Rank, Score: hit.Score}}
 		}
+		manifest.PerQuery[0].CandidateSets = []model.CandidateSet{candidateSetFromRecords("dense", manifest.PerQuery[0].Hits)}
 	case "hybrid":
 		manifest.Retriever.Config["fusion"] = "reciprocal_rank_fusion"
 		manifest.Retriever.Config["branch_failure"] = "fail_closed"
@@ -402,12 +427,46 @@ func setManifestMode(t *testing.T, manifest *Manifest, mode string) {
 				{Stage: "rrf", Rank: hit.Rank, Score: hit.Score},
 			}
 		}
+		manifest.PerQuery[0].CandidateSets = []model.CandidateSet{
+			candidateSetFromSourceScores("fts", manifest.PerQuery[0].Hits),
+			candidateSetFromSourceScores("dense", manifest.PerQuery[0].Hits),
+		}
 	}
 	_, configSHA256, err := normalizeAndHashConfig(manifest.Retriever.Config)
 	if err != nil {
 		t.Fatalf("normalizeAndHashConfig() error = %v", err)
 	}
 	manifest.Retriever.ConfigSHA256 = configSHA256
+}
+
+func candidateSetFromRecords(stage string, hits []HitRecord) model.CandidateSet {
+	result := model.CandidateSet{Stage: stage, Hits: make([]model.CandidateHit, 0, len(hits))}
+	for _, hit := range hits {
+		result.Hits = append(result.Hits, model.CandidateHit{ChunkID: hit.ChunkID, Rank: hit.Rank})
+	}
+	return result
+}
+
+func candidateSetFromSourceScores(stage string, hits []HitRecord) model.CandidateSet {
+	byRank := make(map[int]string)
+	maxRank := 0
+	for _, hit := range hits {
+		for _, score := range hit.StageScores {
+			if score.Stage == stage {
+				byRank[score.Rank] = hit.ChunkID
+				maxRank = max(maxRank, score.Rank)
+			}
+		}
+	}
+	result := model.CandidateSet{Stage: stage, Hits: make([]model.CandidateHit, 0, maxRank)}
+	for rank := 1; rank <= maxRank; rank++ {
+		chunkID := byRank[rank]
+		if chunkID == "" {
+			chunkID = fmt.Sprintf("%s-distractor-%d", stage, rank)
+		}
+		result.Hits = append(result.Hits, model.CandidateHit{ChunkID: chunkID, Rank: rank})
+	}
+	return result
 }
 
 func rehashManifestConfig(t *testing.T, manifest *Manifest) {

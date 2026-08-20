@@ -22,6 +22,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	ftsPath := flags.String("fts", "", "FTS eval manifest path for a three-way comparison")
 	densePath := flags.String("dense", "", "Dense eval manifest path for a three-way comparison")
 	hybridPath := flags.String("hybrid", "", "Hybrid eval manifest path for a three-way comparison")
+	candidateDiagnosis := flags.Bool("candidate-diagnosis", false, "diagnose Hybrid final misses against FTS/Dense candidate-depth manifests")
 	outputPath := flags.String("output", "-", "comparison output path, or - for stdout")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -32,6 +33,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	pairRequested := *baselinePath != "" || *candidatePath != ""
 	threeWayRequested := *ftsPath != "" || *densePath != "" || *hybridPath != ""
+	if *candidateDiagnosis && !threeWayRequested {
+		fmt.Fprintln(stderr, "raghub-eval-compare: -candidate-diagnosis requires -fts, -dense, and -hybrid")
+		return 2
+	}
 	if pairRequested && threeWayRequested {
 		fmt.Fprintln(stderr, "raghub-eval-compare: pairwise and three-way flags cannot be combined")
 		return 2
@@ -96,15 +101,28 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "raghub-eval-compare: %v\n", err)
 			return 1
 		}
-		comparison, err := evalrun.CompareThreeManifests(fts, dense, hybrid)
-		if err != nil {
-			fmt.Fprintf(stderr, "raghub-eval-compare: %v\n", err)
-			return 1
-		}
-		data, err = evalrun.MarshalThreeWayComparison(comparison)
-		if err != nil {
-			fmt.Fprintf(stderr, "raghub-eval-compare: %v\n", err)
-			return 1
+		if *candidateDiagnosis {
+			diagnosis, err := evalrun.DiagnoseCandidateCoverage(fts, dense, hybrid)
+			if err != nil {
+				fmt.Fprintf(stderr, "raghub-eval-compare: %v\n", err)
+				return 1
+			}
+			data, err = evalrun.MarshalCandidateDiagnosis(diagnosis)
+			if err != nil {
+				fmt.Fprintf(stderr, "raghub-eval-compare: %v\n", err)
+				return 1
+			}
+		} else {
+			comparison, err := evalrun.CompareThreeManifests(fts, dense, hybrid)
+			if err != nil {
+				fmt.Fprintf(stderr, "raghub-eval-compare: %v\n", err)
+				return 1
+			}
+			data, err = evalrun.MarshalThreeWayComparison(comparison)
+			if err != nil {
+				fmt.Fprintf(stderr, "raghub-eval-compare: %v\n", err)
+				return 1
+			}
 		}
 	}
 
