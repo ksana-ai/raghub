@@ -1,5 +1,12 @@
 # RAGHub
 
+[![CI](https://github.com/ksana-ai/raghub/actions/workflows/ci.yml/badge.svg)](https://github.com/ksana-ai/raghub/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
+> **Experimental preview:** RAGHub is suitable for local evaluation and
+> synthetic-data experiments. It is not production-ready and must not be
+> exposed directly to untrusted networks.
+
 RAGHub is a Go-native retrieval platform built as an evidence-backed project,
 not a chat-demo wrapper. The current repository implements three independently
 measurable retrieval baselines:
@@ -54,7 +61,8 @@ RRF smoke baseline, not a production RAG system.
 
 Requirements:
 
-- Go 1.24;
+- Go 1.25 or newer; the module recommends the security-patched Go 1.27.1
+  toolchain;
 - Docker with Compose.
 - LM Studio serving `text-embedding-bge-m3` through the OpenAI-compatible
   `/v1/embeddings` API for ingestion, Dense search, and Hybrid search.
@@ -66,6 +74,18 @@ docker compose up -d postgres
 export RAGHUB_DATABASE_URL='postgres://raghub:raghub@localhost:55432/raghub?sslmode=disable'
 export RAGHUB_EMBEDDING_ENDPOINT='http://127.0.0.1:1234/v1/embeddings'
 ```
+
+Alternatively, with LM Studio already listening on the host, build and start
+both the API and PostgreSQL in containers:
+
+```bash
+docker compose --profile app up --build
+```
+
+The container setup maps the API to `http://localhost:8080` and reaches the
+embedding server through `host.docker.internal`. The development database
+credentials in `compose.yaml` are intentionally local-only and must not be
+reused in shared or production environments.
 
 If port `55432` is occupied, set `RAGHUB_POSTGRES_PORT` for Compose and use the
 same port in `RAGHUB_DATABASE_URL`.
@@ -248,6 +268,14 @@ make test-integration
 make eval-all
 ```
 
+The release-oriented gate additionally runs the race detector, verifies module
+checksums, checks formatting, and scans reachable Go code for known
+vulnerabilities:
+
+```bash
+GOSUMDB=sum.golang.org make verify-release
+```
+
 Integration tests skip when `RAGHUB_TEST_DATABASE_URL` is absent; a skipped test
 is not PostgreSQL runtime evidence.
 
@@ -258,6 +286,23 @@ is not PostgreSQL runtime evidence.
 - [ADR 0002: exact pgvector Dense baseline](docs/adr/0002-exact-pgvector-dense-baseline.md)
 - [ADR 0003: fail-closed Hybrid RRF baseline](docs/adr/0003-hybrid-rrf-baseline.md)
 - [ADR 0004: hard benchmark and exact candidate diagnosis](docs/adr/0004-hard-benchmark-candidate-diagnosis.md)
+- [Historical benchmark v1 experiment](docs/experiments/2026-08-20-benchmark-v1.md)
+- [v0.1.0-alpha release readiness](docs/releases/v0.1.0-alpha-readiness.md)
+
+## Project policy
+
+- [Apache-2.0 license](LICENSE)
+- [Contributing guide](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
+- [Changelog](CHANGELOG.md)
+
+Opening the source does not change the current operating boundary. Before any
+real-data or internet-facing deployment, add trusted identity, rate and
+resource limits, secrets management, transport security, observability,
+backup/restore procedures, retention controls, and realistic load and quality
+validation. The checked-in benchmark is synthetic and its results do not
+establish general retrieval quality or production performance.
 - [Database migrations](migrations/)
 
 The local module path is currently `raghub`. It should be changed to the final

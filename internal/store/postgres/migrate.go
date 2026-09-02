@@ -9,7 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"raghub/migrations"
+	"github.com/ksana-ai/raghub/migrations"
 )
 
 const createMigrationsTableSQL = `

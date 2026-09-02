@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOSUMDB: sum.golang.org
+  GOPROXY: https://proxy.golang.org,direct
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.27.1
+          cache: true
+      - name: Verify module and formatting
+        run: |
+          go mod verify
+          test -z "$(gofmt -l $(git ls-files '*.go'))"
+      - name: Unit tests with race detector
+        run: go test -race -count=1 ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Reachable vulnerability scan
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.6-pg17
+        env:
+          POSTGRES_DB: raghub
+          POSTGRES_USER: raghub
+          POSTGRES_PASSWORD: raghub
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U raghub -d raghub"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.27.1
+          cache: true
+      - name: PostgreSQL integration tests
+        env:
+          RAGHUB_TEST_DATABASE_URL: postgres://raghub:raghub@127.0.0.1:5432/raghub?sslmode=disable
+        run: go test -race -count=1 ./internal/store/postgres
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build application image
+        run: docker build --tag raghub:ci .

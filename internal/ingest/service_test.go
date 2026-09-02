@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"raghub/internal/model"
+	"github.com/ksana-ai/raghub/internal/model"
 )
 
 type captureStore struct {

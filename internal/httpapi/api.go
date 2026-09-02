@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"strings"
 
-	"raghub/internal/ingest"
-	"raghub/internal/model"
-	"raghub/internal/retrieval"
+	"github.com/ksana-ai/raghub/internal/ingest"
+	"github.com/ksana-ai/raghub/internal/model"
+	"github.com/ksana-ai/raghub/internal/retrieval"
 )
 
 const maxRequestBodyBytes = 6 << 20

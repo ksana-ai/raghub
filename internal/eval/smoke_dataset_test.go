@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"raghub/internal/ingest"
+	"github.com/ksana-ai/raghub/internal/ingest"
 )
 
 func TestSmokeDatasetContract(t *testing.T) {

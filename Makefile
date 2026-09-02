@@ -14,8 +14,10 @@ BENCHMARK_FTS_CANDIDATES_OUTPUT ?= artifacts/evals/benchmark-v1-fts-top20.json
 BENCHMARK_DENSE_CANDIDATES_OUTPUT ?= artifacts/evals/benchmark-v1-dense-top20.json
 BENCHMARK_DIAGNOSIS_OUTPUT ?= artifacts/evals/benchmark-v1-candidate-diagnosis.json
 EVAL_BINARY ?= /tmp/raghub-eval
+GO_TOOLCHAIN ?= go1.27.1
+GOVULNCHECK_VERSION ?= v1.7.0
 
-.PHONY: db-up db-down run test test-integration vet eval eval-build eval-fts eval-dense eval-hybrid eval-compare eval-clean-revision eval-three-way eval-paired eval-benchmark eval-benchmark-diagnose eval-v3-regression eval-v2-regression eval-all verify
+.PHONY: db-up db-down run test test-race test-integration vet fmt-check mod-verify vulncheck eval eval-build eval-fts eval-dense eval-hybrid eval-compare eval-clean-revision eval-three-way eval-paired eval-benchmark eval-benchmark-diagnose eval-v3-regression eval-v2-regression eval-all verify verify-release
 
 db-up:
 	docker compose up -d postgres
@@ -29,11 +31,23 @@ run:
 test:
 	go test ./...
 
+test-race:
+	go test -race -count=1 ./...
+
 test-integration:
 	RAGHUB_TEST_DATABASE_URL="$(DATABASE_URL)" go test -count=1 ./internal/store/postgres
 
 vet:
 	go vet ./...
+
+fmt-check:
+	@test -z "$$(gofmt -l $$(git ls-files '*.go'))" || (echo "Go files require gofmt"; gofmt -l $$(git ls-files '*.go'); exit 1)
+
+mod-verify:
+	go mod verify
+
+vulncheck:
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 eval: eval-fts
 
@@ -109,3 +123,5 @@ eval-all:
 	$(MAKE) eval-v2-regression
 
 verify: vet test
+
+verify-release: fmt-check mod-verify vet test-race vulncheck

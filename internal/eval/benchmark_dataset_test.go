@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"raghub/internal/ingest"
+	"github.com/ksana-ai/raghub/internal/ingest"
 )
 
 func TestHardBenchmarkV1PreregisteredContract(t *testing.T) {

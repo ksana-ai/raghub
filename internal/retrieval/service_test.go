@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"raghub/internal/model"
+	"github.com/ksana-ai/raghub/internal/model"
 )
 
 type captureRetriever struct {

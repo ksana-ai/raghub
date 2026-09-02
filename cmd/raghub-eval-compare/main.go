@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	evalrun "raghub/internal/eval"
+	evalrun "github.com/ksana-ai/raghub/internal/eval"
 )
 
 func main() {

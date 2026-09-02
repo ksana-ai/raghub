@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"raghub/internal/model"
+	"github.com/ksana-ai/raghub/internal/model"
 )
 
 func TestDiagnoseCandidateCoverageClassifiesRerankerOpportunity(t *testing.T) {

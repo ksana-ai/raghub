@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"raghub/internal/retrieval"
+	"github.com/ksana-ai/raghub/internal/retrieval"
 )
 
 func TestHybridManifestConfigPreregistersFusionProtocol(t *testing.T) {

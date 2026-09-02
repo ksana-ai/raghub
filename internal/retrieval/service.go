@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"raghub/internal/model"
+	"github.com/ksana-ai/raghub/internal/model"
 )
 
 const (

@@ -15,5 +15,22 @@ services:
     volumes:
       - raghub-postgres:/var/lib/postgresql/data
 
+  raghub:
+    profiles: [app]
+    build: .
+    command: ["-migrate"]
+    environment:
+      RAGHUB_DATABASE_URL: postgres://raghub:raghub@postgres:5432/raghub?sslmode=disable
+      RAGHUB_EMBEDDING_ENDPOINT: ${RAGHUB_EMBEDDING_ENDPOINT:-http://host.docker.internal:1234/v1/embeddings}
+      RAGHUB_EMBEDDING_MODEL: ${RAGHUB_EMBEDDING_MODEL:-text-embedding-bge-m3}
+      RAGHUB_EMBEDDING_DIMENSIONS: ${RAGHUB_EMBEDDING_DIMENSIONS:-1024}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${RAGHUB_API_PORT:-8080}:8080"
+
 volumes:
   raghub-postgres:

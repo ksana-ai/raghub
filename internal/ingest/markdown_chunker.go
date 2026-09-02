@@ -7,7 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"raghub/internal/model"
+	"github.com/ksana-ai/raghub/internal/model"
 )
 
 const (

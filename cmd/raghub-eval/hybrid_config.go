@@ -1,8 +1,8 @@
 package main
 
 import (
-	"raghub/internal/model"
-	"raghub/internal/retrieval"
+	"github.com/ksana-ai/raghub/internal/model"
+	"github.com/ksana-ai/raghub/internal/retrieval"
 )
 
 const hybridBranchFailure = "fail_closed"

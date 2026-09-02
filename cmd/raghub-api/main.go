@@ -15,12 +15,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	openaiembedding "raghub/internal/embedding/openai"
-	"raghub/internal/httpapi"
-	"raghub/internal/ingest"
-	"raghub/internal/readiness"
-	"raghub/internal/retrieval"
-	"raghub/internal/store/postgres"
+	openaiembedding "github.com/ksana-ai/raghub/internal/embedding/openai"
+	"github.com/ksana-ai/raghub/internal/httpapi"
+	"github.com/ksana-ai/raghub/internal/ingest"
+	"github.com/ksana-ai/raghub/internal/readiness"
+	"github.com/ksana-ai/raghub/internal/retrieval"
+	"github.com/ksana-ai/raghub/internal/store/postgres"
 )
 
 const (

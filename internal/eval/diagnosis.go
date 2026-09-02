@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"slices"
 
-	"raghub/internal/model"
+	"github.com/ksana-ai/raghub/internal/model"
 )
 
 const (

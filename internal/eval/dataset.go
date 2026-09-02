@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"raghub/internal/model"
+	"github.com/ksana-ai/raghub/internal/model"
 )
 
 const DatasetSchemaVersion = "raghub.eval.dataset/v1"

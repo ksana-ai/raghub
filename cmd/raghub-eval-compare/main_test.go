@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	evalrun "raghub/internal/eval"
-	"raghub/internal/model"
+	evalrun "github.com/ksana-ai/raghub/internal/eval"
+	"github.com/ksana-ai/raghub/internal/model"
 )
 
 type testIngestor struct{}
