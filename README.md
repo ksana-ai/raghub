@@ -287,6 +287,7 @@ is not PostgreSQL runtime evidence.
 - [ADR 0003: fail-closed Hybrid RRF baseline](docs/adr/0003-hybrid-rrf-baseline.md)
 - [ADR 0004: hard benchmark and exact candidate diagnosis](docs/adr/0004-hard-benchmark-candidate-diagnosis.md)
 - [Historical benchmark v1 experiment](docs/experiments/2026-08-20-benchmark-v1.md)
+- [Current release-candidate benchmark](docs/experiments/2026-09-02-benchmark-v1-release-candidate.md)
 - [v0.1.0-alpha release readiness](docs/releases/v0.1.0-alpha-readiness.md)
 
 ## Project policy
