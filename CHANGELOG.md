@@ -10,6 +10,7 @@ Semantic Versioning after its first tagged preview.
 - Open-source project governance, security policy, and release automation.
 - Reproducible container build and PostgreSQL-backed integration CI.
 - Clean-revision benchmark evidence for the alpha release candidate.
+- Complete Simplified Chinese README with matching safety and evidence boundaries.
 
 ### Security
 

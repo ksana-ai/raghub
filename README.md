@@ -1,5 +1,7 @@
 # RAGHub
 
+English | [简体中文](README_zh.md)
+
 [![CI](https://github.com/ksana-ai/raghub/actions/workflows/ci.yml/badge.svg)](https://github.com/ksana-ai/raghub/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
@@ -289,6 +291,7 @@ is not PostgreSQL runtime evidence.
 - [Historical benchmark v1 experiment](docs/experiments/2026-08-20-benchmark-v1.md)
 - [Current release-candidate benchmark](docs/experiments/2026-09-02-benchmark-v1-release-candidate.md)
 - [v0.1.0-alpha release readiness](docs/releases/v0.1.0-alpha-readiness.md)
+- [Database migrations](migrations/)
 
 ## Project policy
 
@@ -304,22 +307,17 @@ resource limits, secrets management, transport security, observability,
 backup/restore procedures, retention controls, and realistic load and quality
 validation. The checked-in benchmark is synthetic and its results do not
 establish general retrieval quality or production performance.
-- [Database migrations](migrations/)
-
-The local module path is currently `raghub`. It should be changed to the final
-public repository path once that namespace is chosen.
 
 ## Next slices
 
-1. Analyze benchmark v1 with the preregistered reranker gate; do not edit its
-   gold after the first run.
-2. Add reranking only if at least three Hybrid queries are incomplete and at
-   least half of missing gold chunks already exist in the branch candidate
-   union.
-3. Otherwise improve candidate generation and add long-document, version-
-   transition, and redacted real bad-case datasets.
+1. Enable repository security controls and publish the accepted alpha release.
+2. Add independently collected long-document, version-transition, noisy-query,
+   and redacted real bad-case datasets without changing frozen benchmark v1.
+3. Add reranking only when the preregistered gate observes enough recoverable
+   Hybrid ordering failures.
 4. Evaluate tenant-aware ANN only when corpus scale justifies it, comparing its
    recall against the exact Dense baseline.
-5. Add OpenTelemetry spans, load tests, CI, and a verified identity boundary.
+5. Add a verified identity boundary, resource governance, OpenTelemetry spans,
+   backup/restore evidence, and realistic load tests before a production pilot.
 
 Generation and Agentic RAG come after retrieval evidence, not before it.
