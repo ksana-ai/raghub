@@ -15,7 +15,7 @@ Semantic Versioning after its first tagged preview.
 
 - Upgraded the supported Go toolchain and vulnerable retrieval dependencies.
 
-## [0.1.0-alpha] - Unreleased
+## [0.1.0-alpha] - 2026-09-03
 
 - Deterministic Markdown ingestion and immutable document versions.
 - PostgreSQL FTS, exact pgvector Dense retrieval, and fail-closed Hybrid RRF.
