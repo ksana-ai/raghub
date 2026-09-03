@@ -20,7 +20,9 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           go-version: 1.27.1
@@ -53,7 +55,9 @@ jobs:
           --health-timeout 3s
           --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           go-version: 1.27.1
@@ -66,6 +70,8 @@ jobs:
   container:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build application image
         run: docker build --tag raghub:ci .
